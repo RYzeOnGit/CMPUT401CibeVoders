@@ -61,7 +61,7 @@ class ResumeUpdate(BaseModel):
 
 class Resume(ResumeBase):
     id: int
-    file_type: Optional[str] = None  # Include file_type to indicate PDF exists
+    file_type: Optional[str] = None  # Include file_type to indicate .tex file exists
     created_at: datetime
     updated_at: datetime
 

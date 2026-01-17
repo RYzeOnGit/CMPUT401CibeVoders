@@ -37,8 +37,8 @@ class Resume(ResumesBase):
     master_resume_id = Column(Integer, ForeignKey("resumes.id"), nullable=True)
     content = Column(JSON, nullable=False)  # Store resume structure as JSON
     version_history = Column(JSON, default=list)  # Lightweight version history
-    file_data = Column(LargeBinary, nullable=True)  # Store original PDF/DOCX file
-    file_type = Column(String, nullable=True)  # Store file MIME type (application/pdf, etc.)
+    file_data = Column(LargeBinary, nullable=True)  # Store original .tex file
+    file_type = Column(String, nullable=True)  # Store file MIME type (text/x-tex, etc.)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 

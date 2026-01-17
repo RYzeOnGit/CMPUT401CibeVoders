@@ -1,14 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, ArrowLeft, Plus, Upload, X, Trash2, Copy, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
-import { Document, Page, pdfjs } from 'react-pdf';
+import { FileText, ArrowLeft, Plus, Upload, X, Trash2, Copy, Download } from 'lucide-react';
 import { resumesApi } from '../api/client';
 import type { Resume } from '../types';
-import 'react-pdf/dist/Page/AnnotationLayer.css';
-import 'react-pdf/dist/Page/TextLayer.css';
-
-// Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/build/pdf.worker.min.mjs';
 
 export default function ResumesPage() {
   const navigate = useNavigate();
@@ -144,7 +138,7 @@ export default function ResumesPage() {
           {/* Viewer */}
           <div className="flex-1 bg-gray-800/50 rounded-xl border border-gray-700 p-6 overflow-y-auto">
             {selectedResume ? (
-              <PDFViewer
+              <TeXViewer
                 resume={selectedResume}
                 onDelete={() => handleDelete(selectedResume.id)}
                 onCreateDerived={() => handleCreateDerived(selectedResume)}
@@ -166,47 +160,51 @@ export default function ResumesPage() {
   );
 }
 
-// PDF Viewer Component
-function PDFViewer({ resume, onDelete, onCreateDerived }: { resume: Resume; onDelete: () => void; onCreateDerived: () => void }) {
-  const hasPdf = resume.file_type?.includes('pdf');
-  const [numPages, setNumPages] = useState(0);
-  const [pageNumber, setPageNumber] = useState(1);
-  const [scale, setScale] = useState(1.0);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+// TeX Viewer Component
+function TeXViewer({ resume, onDelete, onCreateDerived }: { resume: Resume; onDelete: () => void; onCreateDerived: () => void }) {
+  const hasTex = resume.file_type?.includes('tex') || resume.file_type?.startsWith('text/');
+  const [texContent, setTexContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!hasPdf || !resume.id) {
-      setPdfUrl(null);
+    if (!hasTex || !resume.id) {
+      setTexContent(null);
+      setLoading(false);
       return;
     }
 
-    // Fetch PDF as blob
-    const loadPdf = async () => {
+    // Fetch .tex file as text
+    const loadTex = async () => {
       try {
         const response = await fetch(resumesApi.getFileUrl(resume.id));
-        if (!response.ok) throw new Error('Failed to fetch PDF');
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        setPdfUrl(url);
+        if (!response.ok) throw new Error('Failed to fetch .tex file');
+        const text = await response.text();
+        setTexContent(text);
       } catch (error) {
-        console.error('Error loading PDF:', error);
-        setPdfUrl(null);
+        console.error('Error loading .tex file:', error);
+        setTexContent(null);
+      } finally {
+        setLoading(false);
       }
     };
 
-    loadPdf();
+    loadTex();
+  }, [resume.id, hasTex]);
 
-    return () => {
-      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-    };
-  }, [resume.id, hasPdf]);
+  if (loading) {
+    return (
+      <div className="text-center py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+      </div>
+    );
+  }
 
-  if (!hasPdf) {
+  if (!hasTex || !texContent) {
     return (
       <div className="text-center py-20">
         <Upload className="mx-auto mb-4 text-gray-500" size={64} />
-        <h4 className="text-xl font-semibold text-gray-300 mb-2">No PDF Uploaded</h4>
-        <p className="text-gray-500">This resume doesn't have a PDF file attached.</p>
+        <h4 className="text-xl font-semibold text-gray-300 mb-2">No .tex File Uploaded</h4>
+        <p className="text-gray-500">This resume doesn't have a .tex file attached.</p>
       </div>
     );
   }
@@ -230,16 +228,16 @@ function PDFViewer({ resume, onDelete, onCreateDerived }: { resume: Resume; onDe
         </div>
       </div>
 
-      {/* PDF Viewer */}
+      {/* TeX Viewer */}
       <div className="bg-gray-900 rounded-lg overflow-hidden border border-gray-700">
         {/* Toolbar */}
-        <div className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between gap-4">
-          {/* Download */}
+        <div className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
+          <span className="text-sm text-gray-300">LaTeX Source</span>
           <button
             onClick={() => {
               const link = document.createElement('a');
               link.href = resumesApi.getFileUrl(resume.id);
-              link.download = `${resume.name}.pdf`;
+              link.download = `${resume.name}.tex`;
               link.click();
             }}
             className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded"
@@ -247,78 +245,13 @@ function PDFViewer({ resume, onDelete, onCreateDerived }: { resume: Resume; onDe
           >
             <Download size={18} />
           </button>
-
-          {/* Page Navigation */}
-          <div className="flex items-center gap-2 flex-1 justify-center">
-            <span className="text-sm text-gray-300">Page</span>
-            <button
-              onClick={() => setPageNumber(p => Math.max(1, p - 1))}
-              disabled={pageNumber <= 1}
-              className="p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded disabled:opacity-30"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <input
-              type="number"
-              value={pageNumber}
-              onChange={(e) => {
-                const val = parseInt(e.target.value);
-                if (val >= 1 && val <= numPages) setPageNumber(val);
-              }}
-              min={1}
-              max={numPages}
-              className="w-12 px-2 py-1 text-sm text-center bg-gray-700 border border-gray-600 rounded text-gray-100"
-            />
-            <button
-              onClick={() => setPageNumber(p => Math.min(numPages, p + 1))}
-              disabled={pageNumber >= numPages}
-              className="p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded disabled:opacity-30"
-            >
-              <ChevronRight size={18} />
-            </button>
-            <span className="text-sm text-gray-400">of {numPages}</span>
-          </div>
-
-          {/* Zoom */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-300 mr-2">ZOOM</span>
-            <button onClick={() => setScale(s => Math.max(0.5, s - 0.25))} className="p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded">
-              <ZoomOut size={18} />
-            </button>
-            <span className="text-sm text-gray-300 w-10 text-center">{Math.round(scale * 100)}%</span>
-            <button onClick={() => setScale(s => Math.min(3.0, s + 0.25))} className="p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded">
-              <ZoomIn size={18} />
-            </button>
-            <button
-              onClick={() => document.documentElement.requestFullscreen?.()}
-              className="p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded ml-2"
-              title="Fullscreen"
-            >
-              <Maximize size={18} />
-            </button>
-          </div>
         </div>
 
-        {/* PDF Content */}
-        <div className="bg-gray-900 p-4 overflow-auto" style={{ maxHeight: 'calc(100vh - 350px)' }}>
-          <div className="flex justify-center">
-            {pdfUrl ? (
-              <Document
-                file={pdfUrl}
-                onLoadSuccess={({ numPages }) => {
-                  setNumPages(numPages);
-                  setPageNumber(1);
-                }}
-                onLoadError={(error) => console.error('PDF error:', error)}
-                loading={<div className="p-16"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div></div>}
-                error={<div className="text-red-400 p-8 text-center">Failed to load PDF</div>}
-              >
-                <Page pageNumber={pageNumber} scale={scale} renderTextLayer renderAnnotationLayer className="shadow-xl" />
-              </Document>
-            ) : (
-              <div className="p-16"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div></div>
-            )}
-          </div>
+        {/* TeX Content */}
+        <div className="bg-gray-900 p-4 overflow-auto" style={{ maxHeight: 'calc(100vh - 250px)' }}>
+          <pre className="text-gray-200 text-sm font-mono whitespace-pre-wrap break-words">
+            <code>{texContent}</code>
+          </pre>
         </div>
       </div>
     </div>
@@ -358,15 +291,15 @@ function UploadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Resume File (PDF, DOCX)</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Resume File (.tex only)</label>
             <input
               type="file"
-              accept=".pdf,.docx"
+              accept=".tex"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) {
                   setFile(f);
-                  if (!name) setName(f.name.replace(/\.(pdf|docx)$/i, ''));
+                  if (!name) setName(f.name.replace(/\.tex$/i, ''));
                 }
               }}
               className="w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-700 text-gray-100"
