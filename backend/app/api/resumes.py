@@ -7,6 +7,7 @@ from datetime import datetime
 from app.database import get_resumes_db
 from app.models import Resume
 from app.schemas import ResumeCreate, ResumeUpdate, Resume as ResumeSchema
+from app.services.pdf_to_latex import convert_pdf_to_latex, save_latex_to_resume
 
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
 
@@ -168,6 +169,17 @@ async def upload_resume(
     db.add(db_resume)
     db.commit()
     db.refresh(db_resume)
+    
+    # Convert PDF to LaTeX if it's a PDF file
+    if file.content_type == "application/pdf" and file_content:
+        try:
+            latex_content = convert_pdf_to_latex(file_content)
+            if latex_content:
+                save_latex_to_resume(db_resume, latex_content, db)
+        except Exception as e:
+            # Log error but don't fail the upload
+            print(f"Failed to convert PDF to LaTeX: {e}")
+            # Continue without LaTeX conversion - upload still succeeds
     
     return db_resume
 
