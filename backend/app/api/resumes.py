@@ -79,7 +79,7 @@ def delete_resume(resume_id: int, db: Session = Depends(get_resumes_db)):
 
 @router.get("/{resume_id}/file")
 def get_resume_file(resume_id: int, db: Session = Depends(get_resumes_db)):
-    """Get the original PDF/DOCX file for a resume."""
+    """Get the original .tex file for a resume."""
     resume = db.query(Resume).filter(Resume.id == resume_id).first()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -88,8 +88,8 @@ def get_resume_file(resume_id: int, db: Session = Depends(get_resumes_db)):
         raise HTTPException(status_code=404, detail="No file attached to this resume")
     
     # Determine content type and filename
-    content_type = resume.file_type or "application/pdf"
-    filename = f"{resume.name}.pdf" if "pdf" in content_type else f"{resume.name}.docx"
+    content_type = resume.file_type or "text/x-tex"
+    filename = f"{resume.name}.tex"
     
     return Response(
         content=resume.file_data,
@@ -105,23 +105,35 @@ async def upload_resume(
     is_master: bool = Form(False),
     db: Session = Depends(get_resumes_db)
 ):
-    """Upload resume file (PDF or DOCX) for inline viewing."""
-    # Validate file type
-    valid_types = [
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    ]
-    
-    if file.content_type not in valid_types:
+    """Upload resume file (.tex only) for inline viewing."""
+    # Validate file type - only .tex files
+    if not file.filename or not file.filename.lower().endswith('.tex'):
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type. Supported types: PDF, DOCX. Got: {file.content_type}"
+            detail="Invalid file type. Only .tex files are supported."
         )
     
-    # Check file size (10MB limit)
+    # Accept various content types for .tex files
+    valid_content_types = [
+        "text/x-tex",
+        "application/x-tex",
+        "text/plain",
+        "text/x-latex"
+    ]
+    
+    # If content_type is not recognized but filename is .tex, allow it
+    if file.content_type and file.content_type not in valid_content_types:
+        # Check if filename is .tex - if so, override content type
+        if not file.filename.lower().endswith('.tex'):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type. Only .tex files are supported. Got: {file.content_type}"
+            )
+    
+    # Check file size (5MB limit for text files)
     file_content = await file.read()
-    if len(file_content) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File size exceeds 10MB limit")
+    if len(file_content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size exceeds 5MB limit")
     
     # Minimal content structure (required by Resume model)
     minimal_content = {
@@ -134,15 +146,18 @@ async def upload_resume(
         "education": {}
     }
     
-    # Create resume with file storage (no extraction)
-    resume_name = name or file.filename.replace(".pdf", "").replace(".docx", "").replace(".doc", "") if file.filename else "Uploaded Resume"
+    # Create resume with file storage
+    resume_name = name or file.filename.replace(".tex", "") if file.filename else "Uploaded Resume"
+    
+    # Store content type as text/x-tex for consistency
+    content_type = file.content_type if file.content_type in valid_content_types else "text/x-tex"
     
     db_resume = Resume(
         name=resume_name,
         is_master=is_master,
         content=minimal_content,
-        file_data=file_content,  # Store original file
-        file_type=file.content_type,  # Store file type
+        file_data=file_content,  # Store original .tex file
+        file_type=content_type,  # Store file type
         version_history=[{
             "timestamp": datetime.now().isoformat(),
             "content": {
