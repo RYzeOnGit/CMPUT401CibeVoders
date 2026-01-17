@@ -142,7 +142,7 @@ function SortableApplicationCard({ application, onOpenCommunications }: Sortable
               e.stopPropagation();
             }}
             className="opacity-0 group-hover:opacity-100 text-blue-400 hover:text-blue-300 transition-all p-1.5 rounded hover:bg-blue-900/30 z-10 pointer-events-auto"
-            title="View communications"
+            title="View updates"
             type="button"
           >
             <MessageSquare size={14} />
