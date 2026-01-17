@@ -1,60 +1,17 @@
 """Demo data seeding service."""
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from app.models import Application, Resume, Communication, Reminder
+from app.models import Application, Communication, Reminder
 
 
 def seed_demo_data(db: Session):
-    """Seed database with demo data."""
+    """Seed database with demo data for applications, communications, and reminders.
+    
+    Note: Resumes are now in a separate database (resumes.db) and should be uploaded via the UI.
+    """
     # Check if data already exists
     if db.query(Application).count() > 0:
         return  # Already seeded
-
-    # Create master resume
-    master_resume = Resume(
-        name="Master Resume",
-        is_master=True,
-        content={
-            "name": "John Doe",
-            "email": "john.doe@example.com",
-            "phone": "(555) 123-4567",
-            "summary": "Experienced software engineer with 5+ years building scalable applications",
-            "experience": [
-                {
-                    "company": "Tech Corp",
-                    "role": "Senior Software Engineer",
-                    "duration": "2020 - Present",
-                    "bullet_points": [
-                        "Led development of microservices architecture serving 1M+ users",
-                        "Mentored team of 5 junior engineers",
-                        "Reduced API response time by 40% through optimization"
-                    ]
-                }
-            ],
-            "skills": ["Python", "React", "TypeScript", "AWS", "Docker", "Kubernetes"],
-            "education": {
-                "degree": "BS Computer Science",
-                "university": "State University",
-                "year": "2019"
-            }
-        },
-        version_history=[]
-    )
-    db.add(master_resume)
-    db.flush()
-
-    # Create derived resume
-    derived_resume = Resume(
-        name="Derived Resume - Google",
-        is_master=False,
-        master_resume_id=master_resume.id,
-        content=master_resume.content.copy(),
-        version_history=[]
-    )
-    # Tweak for specific application
-    derived_resume.content["summary"] = "Experienced software engineer specializing in distributed systems and cloud infrastructure"
-    db.add(derived_resume)
-    db.flush()
 
     # Sample companies and roles
     demo_applications = [
@@ -67,7 +24,6 @@ def seed_demo_data(db: Session):
             "location": "Mountain View, CA",
             "duration": "Full-time",
             "notes": "Initial phone screen went well. Technical interview scheduled for next week.",
-            "resume_id": derived_resume.id
         },
         {
             "company_name": "Microsoft",
@@ -78,7 +34,6 @@ def seed_demo_data(db: Session):
             "location": "Seattle, WA",
             "duration": "Full-time",
             "notes": "Applied through their careers page. Waiting for response.",
-            "resume_id": master_resume.id
         },
         {
             "company_name": "Amazon",
@@ -89,7 +44,6 @@ def seed_demo_data(db: Session):
             "location": "Seattle, WA",
             "duration": "Full-time",
             "notes": "Referral from former colleague. Phone interview completed.",
-            "resume_id": master_resume.id
         },
         {
             "company_name": "Meta",
@@ -98,7 +52,6 @@ def seed_demo_data(db: Session):
             "status": "Applied",
             "source": "LinkedIn",
             "notes": None,
-            "resume_id": master_resume.id
         },
         {
             "company_name": "Apple",
@@ -107,7 +60,6 @@ def seed_demo_data(db: Session):
             "status": "Rejected",
             "source": "Company Site",
             "notes": "Received rejection email. Position went to internal candidate.",
-            "resume_id": master_resume.id
         },
         {
             "company_name": "Netflix",
@@ -118,7 +70,6 @@ def seed_demo_data(db: Session):
             "location": "Los Gatos, CA",
             "duration": "Full-time",
             "notes": "Received offer! $180k base + $50k signing bonus. Negotiating equity.",
-            "resume_id": master_resume.id
         },
         {
             "company_name": "Stripe",
@@ -127,7 +78,6 @@ def seed_demo_data(db: Session):
             "status": "Interview",
             "source": "Referral",
             "notes": "Passed coding challenge. On-site interview scheduled.",
-            "resume_id": master_resume.id
         },
         {
             "company_name": "Airbnb",
@@ -136,7 +86,6 @@ def seed_demo_data(db: Session):
             "status": "Applied",
             "source": "LinkedIn",
             "notes": None,
-            "resume_id": master_resume.id
         },
         {
             "company_name": "Uber",
@@ -145,7 +94,6 @@ def seed_demo_data(db: Session):
             "status": "Rejected",
             "source": "Company Site",
             "notes": "Did not pass technical interview. Will reapply in 6 months.",
-            "resume_id": master_resume.id
         },
         {
             "company_name": "Spotify",
@@ -154,7 +102,56 @@ def seed_demo_data(db: Session):
             "status": "Applied",
             "source": "LinkedIn",
             "notes": "Just applied today. Excited about this role!",
-            "resume_id": master_resume.id
+        },
+        {
+            "company_name": "DataBricks",
+            "role_title": "Data Scientist",
+            "date_applied": datetime.now() - timedelta(days=6),
+            "status": "Interview",
+            "source": "LinkedIn",
+            "location": "San Francisco, CA",
+            "duration": "Full-time",
+            "notes": "Machine learning position. Preparing for technical interview.",
+        },
+        {
+            "company_name": "Netflix",
+            "role_title": "Data Scientist - Recommendation Systems",
+            "date_applied": datetime.now() - timedelta(days=4),
+            "status": "Applied",
+            "source": "Company Site",
+            "location": "Los Gatos, CA",
+            "duration": "Full-time",
+            "notes": "Focused on recommendation systems and personalization.",
+        },
+        {
+            "company_name": "Shopify",
+            "role_title": "Full Stack Developer",
+            "date_applied": datetime.now() - timedelta(days=9),
+            "status": "Interview",
+            "source": "Referral",
+            "location": "Ottawa, ON",
+            "duration": "Full-time",
+            "notes": "Referred by friend. Technical interview scheduled.",
+        },
+        {
+            "company_name": "AWS",
+            "role_title": "DevOps Engineer",
+            "date_applied": datetime.now() - timedelta(days=7),
+            "status": "Applied",
+            "source": "LinkedIn",
+            "location": "Seattle, WA",
+            "duration": "Full-time",
+            "notes": "Cloud infrastructure role. Waiting for response.",
+        },
+        {
+            "company_name": "GitHub",
+            "role_title": "Senior DevOps Engineer",
+            "date_applied": datetime.now() - timedelta(days=3),
+            "status": "Interview",
+            "source": "Company Site",
+            "location": "San Francisco, CA",
+            "duration": "Full-time",
+            "notes": "Kubernetes and infrastructure automation focus.",
         }
     ]
 
@@ -217,4 +214,3 @@ def seed_demo_data(db: Session):
     db.add(reminder2)
 
     db.commit()
-

@@ -16,15 +16,16 @@ import { getStatusColor } from '../utils/statusColors';
 import { formatDate } from '../utils/dateUtils';
 import { useApplicationStore } from '../store/applicationStore';
 import EditableCell from './EditableCell';
-import { Trash2, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { Trash2, ChevronLeft, ChevronRight, Search, X, MessageSquare } from 'lucide-react';
 
 interface ApplicationsTableProps {
   applications: Application[];
+  onOpenCommunications?: (application: Application) => void;
 }
 
 const columnHelper = createColumnHelper<Application>();
 
-function ApplicationsTable({ applications }: ApplicationsTableProps) {
+function ApplicationsTable({ applications, onOpenCommunications }: ApplicationsTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -139,20 +140,36 @@ function ApplicationsTable({ applications }: ApplicationsTableProps) {
         id: 'actions',
         header: '',
         cell: (info) => (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (window.confirm(`Delete application for ${info.row.original.company_name}?`)) {
-                deleteApplication(info.row.original.id);
-              }
-            }}
-            className="text-red-400 hover:text-red-300 transition-colors p-1.5 rounded hover:bg-red-900/30 opacity-70 hover:opacity-100"
-            title="Delete application"
-            type="button"
-          >
-            <Trash2 size={16} />
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenCommunications && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onOpenCommunications(info.row.original);
+                }}
+                className="text-blue-400 hover:text-blue-300 transition-colors p-1.5 rounded hover:bg-blue-900/30 opacity-70 hover:opacity-100"
+                title="View communications"
+                type="button"
+              >
+                <MessageSquare size={16} />
+              </button>
+            )}
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.confirm(`Delete application for ${info.row.original.company_name}?`)) {
+                  deleteApplication(info.row.original.id);
+                }
+              }}
+              className="text-red-400 hover:text-red-300 transition-colors p-1.5 rounded hover:bg-red-900/30 opacity-70 hover:opacity-100"
+              title="Delete application"
+              type="button"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
         ),
       }),
     ],
@@ -226,9 +243,9 @@ function ApplicationsTable({ applications }: ApplicationsTableProps) {
         )}
       </div>
 
-      <div className="bg-gray-800/50 rounded-xl shadow-sm border border-gray-700/50 overflow-hidden w-full">
-        <div className="w-full">
-        <table className="w-full divide-y divide-gray-700 table-auto">
+      <div className="bg-gray-800/50 rounded-xl shadow-sm border border-gray-700/50 overflow-hidden w-full overflow-x-auto">
+        <div className="w-full min-w-full">
+        <table className="w-full divide-y divide-gray-700 table-auto min-w-[800px] md:min-w-0">
           <thead className="bg-gradient-to-r from-gray-800 to-gray-700/50">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
@@ -272,10 +289,10 @@ function ApplicationsTable({ applications }: ApplicationsTableProps) {
         </div>
         
         {/* Pagination Controls */}
-        <div className="bg-gray-800/30 border-t border-gray-700/50 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <div className="bg-gray-800/30 border-t border-gray-700/50 px-2 md:px-4 py-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-400">Rows per page:</span>
+            <span className="text-xs sm:text-sm text-gray-400">Rows per page:</span>
             <select
               value={table.getState().pagination.pageSize}
               onChange={(e) => {
@@ -290,27 +307,27 @@ function ApplicationsTable({ applications }: ApplicationsTableProps) {
               ))}
             </select>
           </div>
-          <div className="text-sm text-gray-400">
+          <div className="text-xs sm:text-sm text-gray-400">
             Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{' '}
             {Math.min(
               (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
               table.getFilteredRowModel().rows.length
             )}{' '}
-            of {table.getFilteredRowModel().rows.length} applications
+            of {table.getFilteredRowModel().rows.length}
           </div>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
           <button
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
-            className="px-3 py-1.5 rounded-md text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+            className="px-2 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
           >
-            <ChevronLeft size={16} />
-            Previous
+            <ChevronLeft size={14} />
+            <span className="hidden sm:inline">Previous</span>
           </button>
           
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5 sm:gap-1">
             {Array.from({ length: table.getPageCount() }, (_, i) => i).map((pageIndex) => {
               // Show first page, last page, current page, and pages around current
               const currentPage = table.getState().pagination.pageIndex;
@@ -325,7 +342,7 @@ function ApplicationsTable({ applications }: ApplicationsTableProps) {
                   <button
                     key={pageIndex}
                     onClick={() => table.setPageIndex(pageIndex)}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    className={`px-2 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors ${
                       table.getState().pagination.pageIndex === pageIndex
                         ? 'bg-primary-600 text-white'
                         : 'text-gray-300 bg-gray-700 hover:bg-gray-600'
@@ -351,10 +368,10 @@ function ApplicationsTable({ applications }: ApplicationsTableProps) {
           <button
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
-            className="px-3 py-1.5 rounded-md text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+            className="px-2 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
           >
-            Next
-            <ChevronRight size={16} />
+            <span className="hidden sm:inline">Next</span>
+            <ChevronRight size={14} />
           </button>
         </div>
         </div>

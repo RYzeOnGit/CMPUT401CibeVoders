@@ -4,16 +4,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.database import init_db, SessionLocal
+from app.database import init_db, ApplicationsSessionLocal
 from app.api import applications, autofill, resumes, communications, reminders
 from app.services.demo_data import seed_demo_data
+# Import models to ensure they're registered with metadata before init_db
+from app import models  # noqa: F401
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown."""
     # Startup
     init_db()
-    db = SessionLocal()
+    db = ApplicationsSessionLocal()
     try:
         seed_demo_data(db)
     finally:

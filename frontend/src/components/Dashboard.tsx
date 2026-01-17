@@ -5,8 +5,10 @@ import ApplicationsTable from './ApplicationsTable';
 import KanbanBoard from './KanbanBoard';
 import AutofillModal from './AutofillModal';
 import ApplicationFormModal from './ApplicationFormModal';
+import CommunicationsPanel from './CommunicationsPanel';
 import { useApplicationStore } from '../store/applicationStore';
-import { Plus, Table2, LayoutGrid } from 'lucide-react';
+import { Plus, Table2, LayoutGrid, Bell, FileText } from 'lucide-react';
+import type { Application } from '../types';
 
 type ViewMode = 'table' | 'kanban';
 
@@ -18,6 +20,7 @@ function Dashboard({ viewMode }: DashboardProps) {
   const navigate = useNavigate();
   const [showAutofillModal, setShowAutofillModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
+  const [selectedApplicationForComm, setSelectedApplicationForComm] = useState<Application | null>(null);
   const { applications, isLoading, error } = useApplicationStore();
 
   const handleViewModeChange = (mode: ViewMode) => {
@@ -35,35 +38,86 @@ function Dashboard({ viewMode }: DashboardProps) {
                 <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-lg flex items-center justify-center">
                   <span className="text-white font-bold text-sm">JF</span>
                 </div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-100 to-gray-300 bg-clip-text text-transparent">
+                <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-gray-100 to-gray-300 bg-clip-text text-transparent">
                   Jobvibe
                 </h1>
               </div>
-              <span className="px-2.5 py-1 text-xs font-semibold bg-gradient-to-r from-primary-100 to-primary-50 text-primary-700 rounded-full border border-primary-200">
+              <span className="hidden sm:inline px-2.5 py-1 text-xs font-semibold bg-gradient-to-r from-primary-100 to-primary-50 text-primary-700 rounded-full border border-primary-200">
                 Demo Mode
               </span>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 md:gap-3">
+              {/* Mobile: Icon buttons only */}
+              <div className="flex items-center gap-1 md:hidden">
+                <button
+                  onClick={() => navigate('/reminders')}
+                  className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded-lg transition-colors relative"
+                  title="Reminders"
+                >
+                  <Bell size={18} />
+                </button>
+                <button
+                  onClick={() => navigate('/resumes')}
+                  className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded-lg transition-colors"
+                  title="Resumes"
+                >
+                  <FileText size={18} />
+                </button>
+              </div>
+              {/* Desktop: Full buttons */}
+              <div className="hidden md:flex items-center gap-2">
                 <button
                   onClick={() => setShowFormModal(true)}
-                  className="bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors"
+                  className="bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors text-sm"
                 >
-                  <Plus size={18} />
+                  <Plus size={16} />
                   Add Manually
                 </button>
                 <button
                   onClick={() => setShowAutofillModal(true)}
-                  className="bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-700 hover:to-primary-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200"
+                  className="bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-700 hover:to-primary-600 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 text-sm"
+                >
+                  <Plus size={16} />
+                  Capture
+                </button>
+                <button
+                  onClick={() => navigate('/reminders')}
+                  className="bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors text-sm relative"
+                  title="Reminders"
+                >
+                  <Bell size={16} />
+                  <span className="hidden lg:inline">Reminders</span>
+                </button>
+                <button
+                  onClick={() => navigate('/resumes')}
+                  className="bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors text-sm"
+                  title="Resume Manager"
+                >
+                  <FileText size={16} />
+                  <span className="hidden lg:inline">Resumes</span>
+                </button>
+              </div>
+              {/* Mobile: Add buttons */}
+              <div className="flex items-center gap-1 md:hidden">
+                <button
+                  onClick={() => setShowFormModal(true)}
+                  className="p-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-colors"
+                  title="Add Manually"
                 >
                   <Plus size={18} />
-                  Capture Application
+                </button>
+                <button
+                  onClick={() => setShowAutofillModal(true)}
+                  className="p-2 bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-700 hover:to-primary-600 text-white rounded-lg transition-colors"
+                  title="Capture Application"
+                >
+                  <Plus size={18} />
                 </button>
               </div>
               <div className="flex items-center gap-1 bg-gray-700/50 rounded-lg p-1">
                 <button
                   onClick={() => handleViewModeChange('table')}
-                  className={`px-3 py-1.5 rounded-md transition-all duration-200 ${
+                  className={`px-2 md:px-3 py-1.5 rounded-md transition-all duration-200 ${
                     viewMode === 'table'
                       ? 'bg-gray-700 text-gray-100 shadow-sm'
                       : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'
@@ -74,7 +128,7 @@ function Dashboard({ viewMode }: DashboardProps) {
                 </button>
                 <button
                   onClick={() => handleViewModeChange('kanban')}
-                  className={`px-3 py-1.5 rounded-md transition-all duration-200 ${
+                  className={`px-2 md:px-3 py-1.5 rounded-md transition-all duration-200 ${
                     viewMode === 'kanban'
                       ? 'bg-gray-700 text-gray-100 shadow-sm'
                       : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'
@@ -111,9 +165,15 @@ function Dashboard({ viewMode }: DashboardProps) {
         ) : (
           <>
             {viewMode === 'table' ? (
-              <ApplicationsTable applications={applications} />
+              <ApplicationsTable 
+                applications={applications} 
+                onOpenCommunications={(app) => setSelectedApplicationForComm(app)}
+              />
             ) : (
-              <KanbanBoard applications={applications} />
+              <KanbanBoard 
+                applications={applications}
+                onOpenCommunications={(app) => setSelectedApplicationForComm(app)}
+              />
             )}
           </>
         )}
@@ -138,6 +198,14 @@ function Dashboard({ viewMode }: DashboardProps) {
             setShowFormModal(false);
             useApplicationStore.getState().fetchApplications();
           }}
+        />
+      )}
+
+      {/* Communications Panel */}
+      {selectedApplicationForComm && (
+        <CommunicationsPanel
+          application={selectedApplicationForComm}
+          onClose={() => setSelectedApplicationForComm(null)}
         />
       )}
     </div>

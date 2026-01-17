@@ -52,8 +52,10 @@ export interface Resume {
   master_resume_id?: number;
   content: ResumeContent;
   version_history: ResumeVersion[];
+  file_type?: string;  // MIME type of uploaded file (application/pdf, etc.)
   created_at: string;
   updated_at: string;
+  derived_resumes?: Resume[];
 }
 
 export interface ResumeContent {

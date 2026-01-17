@@ -1,11 +1,11 @@
 """SQLAlchemy database models."""
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, JSON, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, JSON, Boolean, LargeBinary
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from app.database import Base
+from app.database import ApplicationsBase, ResumesBase
 
 
-class Application(Base):
+class Application(ApplicationsBase):
     """Job application model."""
     __tablename__ = "applications"
 
@@ -18,17 +18,16 @@ class Application(Base):
     location = Column(String)  # Toronto, ON, etc.
     duration = Column(String)  # 12 months, 4 months, Full-time, etc.
     notes = Column(Text)
+    resume_id = Column(Integer, nullable=True)  # Reference to resume ID (no FK across databases)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-    # Relationships
+    # Relationships (within same database)
     communications = relationship("Communication", back_populates="application", cascade="all, delete-orphan")
     reminders = relationship("Reminder", back_populates="application", cascade="all, delete-orphan")
-    resume_id = Column(Integer, ForeignKey("resumes.id"), nullable=True)
-    resume = relationship("Resume", foreign_keys=[resume_id])
 
 
-class Resume(Base):
+class Resume(ResumesBase):
     """Resume model - master and derived versions."""
     __tablename__ = "resumes"
 
@@ -38,6 +37,8 @@ class Resume(Base):
     master_resume_id = Column(Integer, ForeignKey("resumes.id"), nullable=True)
     content = Column(JSON, nullable=False)  # Store resume structure as JSON
     version_history = Column(JSON, default=list)  # Lightweight version history
+    file_data = Column(LargeBinary, nullable=True)  # Store original PDF/DOCX file
+    file_type = Column(String, nullable=True)  # Store file MIME type (application/pdf, etc.)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -45,7 +46,7 @@ class Resume(Base):
     master_resume = relationship("Resume", remote_side=[id], backref="derived_resumes")
 
 
-class Communication(Base):
+class Communication(ApplicationsBase):
     """Communication log for applications."""
     __tablename__ = "communications"
 
@@ -60,7 +61,7 @@ class Communication(Base):
     application = relationship("Application", back_populates="communications")
 
 
-class Reminder(Base):
+class Reminder(ApplicationsBase):
     """Reminders and follow-ups."""
     __tablename__ = "reminders"
 

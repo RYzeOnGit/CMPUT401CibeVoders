@@ -21,10 +21,11 @@ import type { Application, ApplicationStatus } from '../types';
 import { getStatusColor } from '../utils/statusColors';
 import { formatDate } from '../utils/dateUtils';
 import { useApplicationStore } from '../store/applicationStore';
-import { Trash2, Search, X } from 'lucide-react';
+import { Trash2, Search, X, MessageSquare } from 'lucide-react';
 
 interface KanbanBoardProps {
   applications: Application[];
+  onOpenCommunications?: (application: Application) => void;
 }
 
 interface SortableApplicationCardProps {
@@ -53,7 +54,12 @@ function DroppableColumn({
   );
 }
 
-function SortableApplicationCard({ application }: SortableApplicationCardProps) {
+interface SortableApplicationCardProps {
+  application: Application;
+  onOpenCommunications?: (application: Application) => void;
+}
+
+function SortableApplicationCard({ application, onOpenCommunications }: SortableApplicationCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: application.id.toString() });
   const deleteApplication = useApplicationStore((state) => state.deleteApplication);
@@ -119,7 +125,29 @@ function SortableApplicationCard({ application }: SortableApplicationCardProps) 
           <p className="text-xs text-gray-400">{formatDate(application.date_applied)}</p>
         </div>
       </div>
-      <div className="flex justify-end mt-2 pt-2 border-t border-gray-600/30">
+      <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-gray-600/30">
+        {onOpenCommunications && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onOpenCommunications(application);
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            className="opacity-0 group-hover:opacity-100 text-blue-400 hover:text-blue-300 transition-all p-1.5 rounded hover:bg-blue-900/30 z-10 pointer-events-auto"
+            title="View communications"
+            type="button"
+          >
+            <MessageSquare size={14} />
+          </button>
+        )}
         <button
           onClick={handleDeleteClick}
           onMouseDown={(e) => {
@@ -146,7 +174,7 @@ function SortableApplicationCard({ application }: SortableApplicationCardProps) 
   );
 }
 
-function KanbanBoard({ applications }: KanbanBoardProps) {
+function KanbanBoard({ applications, onOpenCommunications }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const updateApplication = useApplicationStore((state) => state.updateApplication);
@@ -251,7 +279,7 @@ function KanbanBoard({ applications }: KanbanBoardProps) {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 pb-8">
         {STATUSES.map((status) => {
           const columnApps = groupedApplications[status];
           return (
@@ -267,9 +295,13 @@ function KanbanBoard({ applications }: KanbanBoardProps) {
                   items={columnApps.map((app) => app.id.toString())}
                   strategy={verticalListSortingStrategy}
                 >
-                  {columnApps.map((application) => (
-                    <SortableApplicationCard key={application.id} application={application} />
-                  ))}
+                    {columnApps.map((application) => (
+                      <SortableApplicationCard 
+                        key={application.id} 
+                        application={application}
+                        onOpenCommunications={onOpenCommunications}
+                      />
+                    ))}
                   {columnApps.length === 0 && (
                     <div className="text-center text-gray-500 py-20">
                       <div className="text-4xl mb-2">📭</div>

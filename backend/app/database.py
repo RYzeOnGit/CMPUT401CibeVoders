@@ -3,28 +3,56 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
+from pathlib import Path
 
-# SQLite database file
-SQLALCHEMY_DATABASE_URL = os.getenv(
-    "DATABASE_URL", "sqlite:///./jobflow.db"
+# Get absolute path to backend directory
+BACKEND_DIR = Path(__file__).parent.parent.absolute()
+
+# Applications database (for applications, communications, reminders)
+APPLICATIONS_DATABASE_URL = os.getenv(
+    "APPLICATIONS_DATABASE_URL", f"sqlite:///{BACKEND_DIR}/jobflow.db"
 )
 
-# Create engine
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
+# Resumes database (separate database for resumes)
+RESUMES_DATABASE_URL = os.getenv(
+    "RESUMES_DATABASE_URL", f"sqlite:///{BACKEND_DIR}/resumes.db"
+)
+
+# Create engines
+applications_engine = create_engine(
+    APPLICATIONS_DATABASE_URL,
     connect_args={"check_same_thread": False}  # SQLite specific
 )
 
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+resumes_engine = create_engine(
+    RESUMES_DATABASE_URL,
+    connect_args={"check_same_thread": False}  # SQLite specific
+)
 
-# Base class for models
-Base = declarative_base()
+# Create session factories
+ApplicationsSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=applications_engine)
+ResumesSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=resumes_engine)
+
+# Base classes for models
+ApplicationsBase = declarative_base()
+ResumesBase = declarative_base()
+
+# Legacy Base for backward compatibility (points to ApplicationsBase)
+Base = ApplicationsBase
 
 
 def get_db():
-    """Dependency for getting database session."""
-    db = SessionLocal()
+    """Dependency for getting applications database session (legacy)."""
+    db = ApplicationsSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_resumes_db():
+    """Dependency for getting resumes database session."""
+    db = ResumesSessionLocal()
     try:
         yield db
     finally:
@@ -32,6 +60,7 @@ def get_db():
 
 
 def init_db():
-    """Initialize database tables."""
-    Base.metadata.create_all(bind=engine)
+    """Initialize all database tables."""
+    ApplicationsBase.metadata.create_all(bind=applications_engine)
+    ResumesBase.metadata.create_all(bind=resumes_engine)
 

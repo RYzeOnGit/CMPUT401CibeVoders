@@ -10,6 +10,7 @@ import type {
   Communication,
   CommunicationCreate,
   Reminder,
+  ReminderCreate,
   ReminderUpdate,
   AutofillParseRequest,
 } from '../types';
@@ -83,6 +84,26 @@ export const resumesApi = {
   delete: async (id: number): Promise<void> => {
     await api.delete(`/api/resumes/${id}`);
   },
+
+  upload: async (file: File, name?: string, isMaster: boolean = false): Promise<Resume> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (name) {
+      formData.append('name', name);
+    }
+    formData.append('is_master', String(isMaster));
+
+    const response = await api.post<Resume>('/api/resumes/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  getFileUrl: (id: number): string => {
+    return `${API_BASE_URL}/api/resumes/${id}/file`;
+  },
 };
 
 // Communications API
@@ -107,9 +128,18 @@ export const remindersApi = {
     return response.data;
   },
 
+  create: async (data: ReminderCreate): Promise<Reminder> => {
+    const response = await api.post<Reminder>('/api/reminders', data);
+    return response.data;
+  },
+
   update: async (id: number, data: ReminderUpdate): Promise<Reminder> => {
     const response = await api.patch<Reminder>(`/api/reminders/${id}`, data);
     return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/reminders/${id}`);
   },
 };
 
