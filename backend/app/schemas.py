@@ -62,6 +62,7 @@ class ResumeUpdate(BaseModel):
 class Resume(ResumeBase):
     id: int
     file_type: Optional[str] = None  # Include file_type to indicate PDF exists
+    latex_content: Optional[str] = None  # LaTeX representation of the resume
     created_at: datetime
     updated_at: datetime
 
