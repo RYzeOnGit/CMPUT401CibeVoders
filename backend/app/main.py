@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.database import init_db, ApplicationsSessionLocal
-from app.api import applications, autofill, resumes, communications, reminders
+from app.api import applications, autofill, resumes, communications, reminders, ai
 from app.services.demo_data import seed_demo_data
 # Import models to ensure they're registered with metadata before init_db
 from app import models  # noqa: F401
@@ -49,6 +49,7 @@ app.include_router(autofill.router)
 app.include_router(resumes.router)
 app.include_router(communications.router)
 app.include_router(reminders.router)
+app.include_router(ai.router)
 
 
 @app.get("/")

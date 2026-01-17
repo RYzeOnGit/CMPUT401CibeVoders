@@ -143,3 +143,32 @@ export interface AutofillParseRequest {
   text?: string;
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: string;
+}
+
+export interface ChatSession {
+  id: number;
+  title: string;
+  mode: 'critique' | 'interview';
+  resume_id?: number;
+  application_id?: number;
+  messages: ChatMessage[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatSessionCreate {
+  title?: string;
+  mode: 'critique' | 'interview';
+  resume_id?: number;
+  application_id?: number;
+}
+
+export interface ChatSessionUpdate {
+  title?: string;
+  messages?: ChatMessage[];
+}
+

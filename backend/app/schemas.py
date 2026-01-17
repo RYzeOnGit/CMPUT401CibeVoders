@@ -126,3 +126,38 @@ class AutofillParseResponse(BaseModel):
     success: bool
     message: str
 
+
+# Chat Session schemas
+class ChatMessage(BaseModel):
+    role: str  # 'user' or 'assistant'
+    content: str
+    timestamp: Optional[datetime] = None
+
+
+class ChatSessionBase(BaseModel):
+    title: str
+    mode: str  # 'critique' or 'interview'
+    resume_id: Optional[int] = None
+    application_id: Optional[int] = None
+    messages: List[Dict[str, Any]] = []
+
+
+class ChatSessionCreate(BaseModel):
+    title: Optional[str] = None  # Auto-generated if not provided
+    mode: str
+    resume_id: Optional[int] = None
+    application_id: Optional[int] = None
+
+
+class ChatSessionUpdate(BaseModel):
+    title: Optional[str] = None
+    messages: Optional[List[Dict[str, Any]]] = None
+
+
+class ChatSession(ChatSessionBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+

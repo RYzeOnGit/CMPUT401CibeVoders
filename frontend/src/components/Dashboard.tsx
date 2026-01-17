@@ -7,7 +7,7 @@ import AutofillModal from './AutofillModal';
 import ApplicationFormModal from './ApplicationFormModal';
 import CommunicationsPanel from './CommunicationsPanel';
 import { useApplicationStore } from '../store/applicationStore';
-import { Plus, Table2, LayoutGrid, Bell, FileText } from 'lucide-react';
+import { Plus, Table2, LayoutGrid, Bell, FileText, Sparkles } from 'lucide-react';
 import type { Application } from '../types';
 
 type ViewMode = 'table' | 'kanban';
@@ -63,6 +63,13 @@ function Dashboard({ viewMode }: DashboardProps) {
                 >
                   <FileText size={18} />
                 </button>
+                <button
+                  onClick={() => navigate('/ai-chat')}
+                  className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded-lg transition-colors"
+                  title="AI Assistant"
+                >
+                  <Sparkles size={18} />
+                </button>
               </div>
               {/* Desktop: Full buttons */}
               <div className="hidden md:flex items-center gap-2">
@@ -95,6 +102,14 @@ function Dashboard({ viewMode }: DashboardProps) {
                 >
                   <FileText size={16} />
                   <span className="hidden lg:inline">Resumes</span>
+                </button>
+                <button
+                  onClick={() => navigate('/ai-chat')}
+                  className="bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors text-sm"
+                  title="AI Assistant"
+                >
+                  <Sparkles size={16} />
+                  <span className="hidden lg:inline">AI Assistant</span>
                 </button>
               </div>
               {/* Mobile: Add buttons */}

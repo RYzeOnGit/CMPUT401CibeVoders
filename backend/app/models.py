@@ -76,3 +76,17 @@ class Reminder(ApplicationsBase):
     # Relationships
     application = relationship("Application", back_populates="reminders")
 
+
+class ChatSession(ApplicationsBase):
+    """AI Chat session model for storing chat history."""
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)  # Auto-generated or user-provided title
+    mode = Column(String, nullable=False)  # 'critique' or 'interview'
+    resume_id = Column(Integer, nullable=True)  # Reference to resume ID
+    application_id = Column(Integer, nullable=True)  # Reference to application ID
+    messages = Column(JSON, default=list)  # Store conversation history as JSON
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+

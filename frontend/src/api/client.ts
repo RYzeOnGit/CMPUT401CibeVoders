@@ -8,6 +8,9 @@ import type {
   ResumeCreate,
   ResumeUpdate,
   Communication,
+  ChatSession,
+  ChatSessionCreate,
+  ChatSessionUpdate,
   CommunicationCreate,
   Reminder,
   ReminderCreate,
@@ -140,6 +143,62 @@ export const remindersApi = {
 
   delete: async (id: number): Promise<void> => {
     await api.delete(`/api/reminders/${id}`);
+  },
+};
+
+// AI Chat API
+export const aiApi = {
+  chat: async (data: {
+    message: string;
+    mode: 'critique' | 'interview';
+    resume_id?: number;
+    application_id?: number;
+    conversation_history: Array<{ role: string; content: string }>;
+  }): Promise<{ response: string }> => {
+    const response = await api.post<{ response: string }>('/api/ai/chat', data);
+    return response.data;
+  },
+
+  critiqueResume: async (resume_id: number): Promise<{ critique: string }> => {
+    const response = await api.post<{ critique: string }>('/api/ai/critique-resume', { resume_id });
+    return response.data;
+  },
+
+  startInterview: async (resume_id: number, application_id?: number): Promise<{ question: string }> => {
+    const response = await api.post<{ question: string }>('/api/ai/start-interview', { resume_id, application_id });
+    return response.data;
+  },
+
+  rateAnswer: async (question: string, answer: string, resume_id?: number): Promise<{ rating: string }> => {
+    const response = await api.post<{ rating: string }>('/api/ai/rate-answer', { question, answer, resume_id });
+    return response.data;
+  },
+};
+
+// Chat Session API
+export const chatSessionsApi = {
+  getAll: async (): Promise<ChatSession[]> => {
+    const response = await api.get<ChatSession[]>('/api/ai/sessions');
+    return response.data;
+  },
+
+  get: async (id: number): Promise<ChatSession> => {
+    const response = await api.get<ChatSession>(`/api/ai/sessions/${id}`);
+    return response.data;
+  },
+
+  create: async (data: ChatSessionCreate): Promise<ChatSession> => {
+    const response = await api.post<ChatSession>('/api/ai/sessions', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: ChatSessionUpdate): Promise<ChatSession> => {
+    const response = await api.put<ChatSession>(`/api/ai/sessions/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/ai/sessions/${id}`);
   },
 };
 
