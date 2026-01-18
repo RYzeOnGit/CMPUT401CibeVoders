@@ -1,5 +1,5 @@
 """Communications API routes."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 from typing import List, Optional

@@ -1,5 +1,5 @@
 /** Applications Table component with TanStack Table */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -11,7 +11,7 @@ import {
   type SortingState,
   type PaginationState,
 } from '@tanstack/react-table';
-import type { Application } from '../types';
+import type { Application, Communication } from '../types';
 import { getStatusColor } from '../utils/statusColors';
 import { formatDate } from '../utils/dateUtils';
 import { useApplicationStore } from '../store/applicationStore';
@@ -20,6 +20,10 @@ import { Trash2, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 
 interface ApplicationsTableProps {
   applications: Application[];
+}
+
+interface LastCommunicationMap {
+  [applicationId: number]: Communication | null;
 }
 
 const columnHelper = createColumnHelper<Application>();
@@ -31,8 +35,38 @@ function ApplicationsTable({ applications }: ApplicationsTableProps) {
     pageSize: 10,
   });
   const [globalFilter, setGlobalFilter] = useState('');
+  const [lastCommunications, setLastCommunications] = useState<LastCommunicationMap>({});
+  const [selectedApplicationForUpdate, setSelectedApplicationForUpdate] = useState<Application | null>(null);
+  const [selectedApplicationForView, setSelectedApplicationForView] = useState<Application | null>(null);
+  const [openMenuForApplication, setOpenMenuForApplication] = useState<number | null>(null);
   const updateApplication = useApplicationStore((state) => state.updateApplication);
   const deleteApplication = useApplicationStore((state) => state.deleteApplication);
+
+  // Fetch last communication for each application
+  useEffect(() => {
+    const fetchLastCommunications = async () => {
+      const communicationsMap: LastCommunicationMap = {};
+      
+      await Promise.all(
+        applications.map(async (app) => {
+          try {
+            const comms = await communicationsApi.getAll(app.id);
+            const sorted = comms.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            communicationsMap[app.id] = sorted.length > 0 ? sorted[0] : null;
+          } catch (error) {
+            console.error(`Failed to fetch communications for application ${app.id}:`, error);
+            communicationsMap[app.id] = null;
+          }
+        })
+      );
+      
+      setLastCommunications(communicationsMap);
+    };
+
+    if (applications.length > 0) {
+      fetchLastCommunications();
+    }
+  }, [applications]);
 
   const columns = useMemo(
     () => [
@@ -136,6 +170,35 @@ function ApplicationsTable({ applications }: ApplicationsTableProps) {
         ),
       }),
       columnHelper.display({
+        id: 'updates',
+        header: 'Updates',
+        cell: (info) => {
+          const lastComm = lastCommunications[info.row.original.id];
+          return (
+            <UpdatesCell
+              application={info.row.original}
+              lastCommunication={lastComm}
+              isMenuOpen={openMenuForApplication === info.row.original.id}
+              onToggleMenu={() => {
+                setOpenMenuForApplication(
+                  openMenuForApplication === info.row.original.id 
+                    ? null 
+                    : info.row.original.id
+                );
+              }}
+              onViewAll={() => {
+                setOpenMenuForApplication(null);
+                setSelectedApplicationForView(info.row.original);
+              }}
+              onAddUpdate={() => {
+                setOpenMenuForApplication(null);
+                setSelectedApplicationForUpdate(info.row.original);
+              }}
+            />
+          );
+        },
+      }),
+      columnHelper.display({
         id: 'actions',
         header: 'Actions',
         cell: (info) => (
@@ -158,7 +221,7 @@ function ApplicationsTable({ applications }: ApplicationsTableProps) {
         ),
       }),
     ],
-    [updateApplication, deleteApplication]
+    [updateApplication, deleteApplication, lastCommunications, openMenuForApplication]
   );
 
   const table = useReactTable({
@@ -361,6 +424,128 @@ function ApplicationsTable({ applications }: ApplicationsTableProps) {
         </div>
         </div>
       </div>
+
+      {/* Create Update Modal */}
+      {selectedApplicationForUpdate && (
+        <CreateCommunicationModal
+          application={selectedApplicationForUpdate}
+          onClose={() => setSelectedApplicationForUpdate(null)}
+          onSuccess={() => {
+            setSelectedApplicationForUpdate(null);
+            // Refresh last communications
+            const fetchLastCommunication = async () => {
+              try {
+                const comms = await communicationsApi.getAll(selectedApplicationForUpdate.id);
+                const sorted = comms.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                setLastCommunications((prev) => ({
+                  ...prev,
+                  [selectedApplicationForUpdate.id]: sorted.length > 0 ? sorted[0] : null,
+                }));
+              } catch (error) {
+                console.error('Failed to refresh communications:', error);
+              }
+            };
+            fetchLastCommunication();
+          }}
+        />
+      )}
+
+      {/* View All Updates Panel */}
+      {selectedApplicationForView && (
+        <CommunicationsPanel
+          application={selectedApplicationForView}
+          onClose={() => setSelectedApplicationForView(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface UpdatesCellProps {
+  application: Application;
+  lastCommunication: Communication | null;
+  isMenuOpen: boolean;
+  onToggleMenu: () => void;
+  onViewAll: () => void;
+  onAddUpdate: () => void;
+}
+
+function UpdatesCell({ 
+  application, 
+  lastCommunication, 
+  isMenuOpen,
+  onToggleMenu,
+  onViewAll,
+  onAddUpdate 
+}: UpdatesCellProps) {
+  return (
+    <div className="relative">
+      <div
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onToggleMenu();
+        }}
+        className="cursor-pointer hover:bg-gray-700/50 rounded-lg p-2 transition-colors min-h-[60px] flex flex-col justify-center"
+        title="Click to view options"
+      >
+        {lastCommunication ? (
+          <div className="space-y-1">
+            <div className="text-xs text-gray-400">
+              {formatDate(lastCommunication.timestamp)}
+            </div>
+            <div className="text-sm text-gray-200 line-clamp-2">
+              <span className="font-medium text-primary-400">{lastCommunication.type}:</span>{' '}
+              {lastCommunication.message || 'No message'}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-gray-500 text-sm">
+            <Plus size={14} />
+            <span>Add update</span>
+          </div>
+        )}
+      </div>
+
+      {/* Menu Dropdown */}
+      {isMenuOpen && (
+        <>
+          {/* Backdrop to close menu */}
+          <div
+            className="fixed inset-0 z-10"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleMenu();
+            }}
+          />
+          {/* Menu */}
+          <div className="absolute left-0 top-full mt-1 z-20 bg-gray-800 border border-gray-700 rounded-lg shadow-xl min-w-[180px] overflow-hidden">
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onViewAll();
+              }}
+              className="w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-gray-700 transition-colors flex items-center gap-2"
+            >
+              <Eye size={16} className="text-blue-400" />
+              View all updates
+            </button>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onAddUpdate();
+              }}
+              className="w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-gray-700 transition-colors flex items-center gap-2 border-t border-gray-700"
+            >
+              <MessageSquare size={16} className="text-primary-400" />
+              Add update
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

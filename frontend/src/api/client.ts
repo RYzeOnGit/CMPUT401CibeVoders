@@ -109,6 +109,16 @@ export const resumesApi = {
   getFileUrl: (id: number): string => {
     return `${API_BASE_URL}/api/resumes/${id}/file`;
   },
+
+  setMaster: async (id: number): Promise<Resume> => {
+    const response = await api.patch<Resume>(`/api/resumes/${id}/set-master`);
+    return response.data;
+  },
+
+  unsetMaster: async (id: number): Promise<Resume> => {
+    const response = await api.patch<Resume>(`/api/resumes/${id}/unset-master`);
+    return response.data;
+  },
 };
 
 // Communications API
