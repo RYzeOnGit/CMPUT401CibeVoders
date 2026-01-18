@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import RemindersPage from './pages/RemindersPage';
 import ResumesPage from './pages/ResumesPage';
 import AIChatPage from './pages/AIChatPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 import { useApplicationStore } from './store/applicationStore';
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
         <Route path="/reminders" element={<RemindersPage />} />
         <Route path="/resumes" element={<ResumesPage />} />
         <Route path="/ai-chat" element={<AIChatPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
       </Routes>
     </BrowserRouter>
   );
