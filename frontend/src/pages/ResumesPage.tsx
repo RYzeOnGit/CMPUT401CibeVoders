@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, ArrowLeft, Plus, Upload, X, Trash2, Copy, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { FileText, ArrowLeft, Plus, Upload, X, Trash2, Copy, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize, Crown } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { resumesApi } from '../api/client';
 import type { Resume } from '../types';
@@ -67,6 +67,40 @@ export default function ResumesPage() {
     }
   };
 
+  const handleSetMaster = async (resumeId: number) => {
+    try {
+      await resumesApi.setMaster(resumeId);
+      await fetchResumes();
+      // Update selected resume if it was the one changed
+      const updatedResumes = await resumesApi.getAll();
+      const updatedResume = updatedResumes.find(r => r.id === resumeId);
+      if (updatedResume) {
+        setSelectedResume(updatedResume);
+      }
+    } catch (error: any) {
+      console.error('Error setting master resume:', error);
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to set master resume';
+      alert(`Failed to set master resume: ${errorMessage}`);
+    }
+  };
+
+  const handleUnsetMaster = async (resumeId: number) => {
+    try {
+      await resumesApi.unsetMaster(resumeId);
+      await fetchResumes();
+      // Update selected resume if it was the one changed
+      const updatedResumes = await resumesApi.getAll();
+      const updatedResume = updatedResumes.find(r => r.id === resumeId);
+      if (updatedResume) {
+        setSelectedResume(updatedResume);
+      }
+    } catch (error: any) {
+      console.error('Error unsetting master resume:', error);
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to unset master resume';
+      alert(`Failed to unset master resume: ${errorMessage}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       {/* Header */}
@@ -123,7 +157,12 @@ export default function ResumesPage() {
                     }`}
                   >
                     <button onClick={() => setSelectedResume(resume)} className="w-full text-left">
-                      {resume.is_master && <span className="text-xs font-semibold bg-purple-900/30 text-purple-300 px-2 py-0.5 rounded mr-2">Master</span>}
+                      {resume.is_master && (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold bg-purple-900/30 text-purple-300 px-2 py-0.5 rounded mr-2">
+                          <Crown size={12} />
+                          Master
+                        </span>
+                      )}
                       <div className="text-sm text-gray-200 truncate">{resume.name}</div>
                     </button>
                     <button
@@ -132,6 +171,7 @@ export default function ResumesPage() {
                         handleDelete(resume.id);
                       }}
                       className="absolute top-2 right-2 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-red-900/30 rounded text-gray-400 hover:text-red-400"
+                      title="Delete"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -148,6 +188,8 @@ export default function ResumesPage() {
                 resume={selectedResume}
                 onDelete={() => handleDelete(selectedResume.id)}
                 onCreateDerived={() => handleCreateDerived(selectedResume)}
+                onSetMaster={() => handleSetMaster(selectedResume.id)}
+                onUnsetMaster={() => handleUnsetMaster(selectedResume.id)}
               />
             ) : (
               <div className="text-center py-20">
@@ -167,7 +209,7 @@ export default function ResumesPage() {
 }
 
 // PDF Viewer Component
-function PDFViewer({ resume, onDelete, onCreateDerived }: { resume: Resume; onDelete: () => void; onCreateDerived: () => void }) {
+function PDFViewer({ resume, onDelete, onCreateDerived, onSetMaster, onUnsetMaster }: { resume: Resume; onDelete: () => void; onCreateDerived: () => void; onSetMaster: () => void; onUnsetMaster: () => void }) {
   const hasPdf = resume.file_type?.includes('pdf');
   const [numPages, setNumPages] = useState(0);
   const [pageNumber, setPageNumber] = useState(1);
@@ -216,7 +258,15 @@ function PDFViewer({ resume, onDelete, onCreateDerived }: { resume: Resume; onDe
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="text-xl font-semibold text-gray-100">{resume.name}</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-xl font-semibold text-gray-100">{resume.name}</h3>
+          {resume.is_master && (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold bg-purple-900/30 text-purple-300 px-2 py-1 rounded">
+              <Crown size={14} />
+              Master Resume
+            </span>
+          )}
+        </div>
         <div className="flex gap-2">
           {resume.latex_content && (
             <button 
@@ -227,11 +277,28 @@ function PDFViewer({ resume, onDelete, onCreateDerived }: { resume: Resume; onDe
               {showLatex ? 'Show PDF' : 'Show LaTeX'}
             </button>
           )}
-          {resume.is_master && (
-            <button onClick={onCreateDerived} className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm flex items-center gap-2">
-              <Copy size={14} />
-              Create Derived
+          {!resume.is_master && (
+            <button 
+              onClick={onSetMaster} 
+              className="px-3 py-1.5 bg-yellow-900/30 hover:bg-yellow-900/50 text-yellow-400 rounded-lg text-sm flex items-center gap-2"
+            >
+              <Crown size={14} />
+              Set as Master
             </button>
+          )}
+          {resume.is_master && (
+            <>
+              <button 
+                onClick={onUnsetMaster} 
+                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm flex items-center gap-2"
+              >
+                Unset Master
+              </button>
+              <button onClick={onCreateDerived} className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm flex items-center gap-2">
+                <Copy size={14} />
+                Create Derived
+              </button>
+            </>
           )}
           <button onClick={onDelete} className="px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded-lg text-sm flex items-center gap-2">
             <Trash2 size={14} />
@@ -438,7 +505,8 @@ function UploadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 
 // Create Modal
 function CreateModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [name, setName] = useState('Master Resume');
+  const [name, setName] = useState('');
+  const [isMaster, setIsMaster] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -447,7 +515,7 @@ function CreateModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
     try {
       await resumesApi.create({
         name,
-        is_master: true,
+        is_master: isMaster,
         content: { name: '', email: '', phone: '', summary: '', skills: [], experience: [], education: { degree: '', university: '', year: '' } },
         version_history: [],
       });
@@ -464,7 +532,7 @@ function CreateModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-700">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold text-gray-100">Create Master Resume</h3>
+          <h3 className="text-lg font-semibold text-gray-100">Create Resume</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-200">
             <X size={20} />
           </button>
@@ -477,14 +545,28 @@ function CreateModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-700 text-gray-100"
+              placeholder="Enter resume name"
               required
             />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="isMaster"
+              checked={isMaster}
+              onChange={(e) => setIsMaster(e.target.checked)}
+              className="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500"
+            />
+            <label htmlFor="isMaster" className="text-sm text-gray-300 flex items-center gap-1 cursor-pointer">
+              <Crown size={14} />
+              Set as master resume
+            </label>
           </div>
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 flex-1" disabled={creating}>
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white rounded-lg font-medium flex-1" disabled={creating}>
+            <button type="submit" className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white rounded-lg font-medium flex-1" disabled={creating || !name.trim()}>
               {creating ? 'Creating...' : 'Create'}
             </button>
           </div>
