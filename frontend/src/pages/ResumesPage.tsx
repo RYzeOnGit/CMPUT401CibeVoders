@@ -31,6 +31,44 @@ export default function ResumesPage() {
     fetchTemplates();
   }, []);
 
+  // Auto-refresh selected resume if it's a PDF without LaTeX (waiting for conversion)
+  useEffect(() => {
+    if (!selectedResume) return;
+    
+    // If it's a PDF but no LaTeX yet, poll for LaTeX content
+    if (selectedResume.file_type?.includes('pdf') && !selectedResume.latex_content) {
+      const pollForLatex = async () => {
+        let attempts = 0;
+        const maxAttempts = 10; // Check for 20 seconds (2s intervals)
+        
+        const interval = setInterval(async () => {
+          attempts++;
+          
+          try {
+            const updatedResume = await resumesApi.getById(selectedResume.id);
+            if (updatedResume.latex_content) {
+              // LaTeX is ready! Update the selected resume
+              setSelectedResume(updatedResume);
+              // Also update in the resumes list
+              setResumes(prev => prev.map(r => r.id === updatedResume.id ? updatedResume : r));
+              clearInterval(interval);
+            } else if (attempts >= maxAttempts) {
+              clearInterval(interval);
+            }
+          } catch (error) {
+            console.error('Error polling for LaTeX:', error);
+            clearInterval(interval);
+          }
+        }, 2000); // Check every 2 seconds
+        
+        return () => clearInterval(interval);
+      };
+      
+      const cleanup = pollForLatex();
+      return cleanup;
+    }
+  }, [selectedResume?.id, selectedResume?.file_type, selectedResume?.latex_content]);
+
   const fetchTemplates = async () => {
     try {
       const data = await resumesApi.getTemplates();
@@ -159,28 +197,19 @@ export default function ResumesPage() {
       fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:111',message:'API response received',data:{newResumeId:newResume.id,newResumeName:newResume.name,hasFileType:!!newResume.file_type,fileType:newResume.file_type,hasLatex:!!newResume.latex_content},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
       
+      // Refresh the resumes list to include the new one
       await fetchResumes();
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:115',message:'After fetchResumes',data:{resumesCount:resumes.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       
       setShowTemplateModal(false);
       setSelectedResumeForTemplate(null);
       
-      // Use the newResume directly from API response instead of fetching again
-      // The API response already contains the complete resume object with file_type
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:120',message:'Using newResume from API response',data:{newResumeId:newResume.id,newResumeName:newResume.name,newResumeFileType:newResume.file_type,newResumeHasPdf:newResume.file_type?.includes('pdf')},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
+      // Fetch the complete new resume from the server to ensure we have all fields
+      const completeNewResume = await resumesApi.getById(newResume.id);
       
-      // Select the new resume directly from API response
-      setSelectedResume(newResume);
+      // Select the new resume - this will trigger the PDF viewer to display it
+      setSelectedResume(completeNewResume);
       
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:125',message:'setSelectedResume called with newResume',data:{resumeId:newResume.id,resumeFileType:newResume.file_type},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      alert(`Template applied successfully! New resume: ${newResume.name}`);
+      alert(`Template applied successfully! New resume: ${completeNewResume.name}`);
     } catch (error: any) {
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:127',message:'Template apply error',data:{error:error.message,errorDetail:error.response?.data?.detail},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
@@ -193,12 +222,15 @@ export default function ResumesPage() {
 
   const openTemplateModal = (resume: Resume) => {
     if (!resume.latex_content) {
-      alert('This resume does not have LaTeX content. Please upload a PDF first.');
+      alert('This resume does not have LaTeX content yet. If you just uploaded a PDF, please wait a moment for LaTeX conversion to complete, then try again. If the issue persists, the PDF may not have been processed correctly.');
+      return;
+    }
+    if (!resume.file_type?.includes('pdf')) {
+      alert('Template blending works best with PDF resumes. Please upload a PDF resume first.');
       return;
     }
     setSelectedResumeForTemplate(resume);
     setShowTemplateModal(true);
->>>>>>> bb7ae40 (blend resume)
   };
 
   return (
@@ -263,7 +295,12 @@ export default function ResumesPage() {
                           Master
                         </span>
                       )}
-                      <div className="text-sm text-gray-200 truncate">{resume.name}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-200 truncate">{resume.name}</span>
+                        {resume.file_type?.includes('pdf') && (
+                          <Sparkles size={12} className="text-purple-400 flex-shrink-0" title="Template blending available" />
+                        )}
+                      </div>
                     </button>
                     <button
                       onClick={(e) => {
@@ -314,7 +351,21 @@ export default function ResumesPage() {
       </main>
 
       {/* Modals */}
-      {showUploadModal && <UploadModal onClose={() => setShowUploadModal(false)} onSuccess={fetchResumes} />}
+      {showUploadModal && (
+        <UploadModal 
+          onClose={() => setShowUploadModal(false)} 
+          onSuccess={async () => {
+            await fetchResumes();
+            // If a resume was just uploaded, try to select it and check for LaTeX
+            const updatedResumes = await resumesApi.getAll();
+            if (updatedResumes.length > 0) {
+              const latestResume = updatedResumes[0]; // Most recent is first
+              setSelectedResume(latestResume);
+              // If LaTeX is ready, the button will appear automatically
+            }
+          }} 
+        />
+      )}
       {showCreateModal && <CreateModal onClose={() => setShowCreateModal(false)} onSuccess={fetchResumes} />}
       {showEditModal && editingResumeId && (
         <EditResumeModal
@@ -406,7 +457,7 @@ function PDFViewer({ resume, onDelete, onCreateDerived, onSetMaster, onUnsetMast
     return () => {
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
     };
-  }, [resume.id, resume.file_type]); // Changed: depend on resume.file_type directly instead of hasPdf
+  }, [resume.id, resume.file_type, resume.file_data]); // Refresh when resume data changes
 
   if (!hasPdf) {
     // If there's LaTeX content but no PDF, show the LaTeX
@@ -494,23 +545,23 @@ function PDFViewer({ resume, onDelete, onCreateDerived, onSetMaster, onUnsetMast
         </div>
         <div className="flex gap-2">
           {resume.latex_content && (
-            <>
-              <button 
-                onClick={() => setShowLatex(!showLatex)}
-                className="px-3 py-1.5 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-sm flex items-center gap-2"
-              >
-                <FileText size={14} />
-                {showLatex ? 'Show PDF' : 'Show LaTeX'}
-              </button>
-              <button 
-                onClick={onApplyTemplate}
-                className="px-3 py-1.5 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white rounded-lg text-sm flex items-center gap-2"
-                title="Apply template for visual upgrade"
-              >
-                <Sparkles size={14} />
-                Glow Up
-              </button>
-            </>
+            <button 
+              onClick={() => setShowLatex(!showLatex)}
+              className="px-3 py-1.5 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-sm flex items-center gap-2"
+            >
+              <FileText size={14} />
+              {showLatex ? 'Show PDF' : 'Show LaTeX'}
+            </button>
+          )}
+          {resume.file_type?.includes('pdf') && (
+            <button 
+              onClick={onApplyTemplate}
+              className="px-3 py-1.5 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white rounded-lg text-sm flex items-center gap-2 font-medium"
+              title="Apply a template to upgrade your resume's visual appearance"
+            >
+              <Sparkles size={14} />
+              Glow Up
+            </button>
           )}
           {!resume.is_master && (
             <button 
@@ -671,6 +722,7 @@ function UploadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [converting, setConverting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -678,13 +730,58 @@ function UploadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 
     setUploading(true);
     try {
-      await resumesApi.upload(file, name || undefined, false);
-      onSuccess();
-      onClose();
+      const uploadedResume = await resumesApi.upload(file, name || undefined, false);
+      
+      // If it's a PDF, LaTeX conversion happens asynchronously on the backend
+      // Poll for LaTeX content to be ready
+      if (file.type === 'application/pdf' && !uploadedResume.latex_content) {
+        setUploading(false);
+        setConverting(true);
+        
+        // Poll for LaTeX content (max 30 seconds, check every 2 seconds)
+        let attempts = 0;
+        const maxAttempts = 15;
+        const pollInterval = 2000;
+        
+        const pollForLatex = async () => {
+          while (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+            attempts++;
+            
+            try {
+              const updatedResume = await resumesApi.getById(uploadedResume.id);
+              if (updatedResume.latex_content) {
+                setConverting(false);
+                onSuccess();
+                onClose();
+                return;
+              }
+            } catch (error) {
+              console.error('Error polling for LaTeX:', error);
+            }
+          }
+          
+          // Timeout - LaTeX conversion might have failed, but resume is still uploaded
+          setConverting(false);
+          alert('Resume uploaded successfully. LaTeX conversion is still in progress. The "Glow Up" button will appear once conversion completes.');
+          onSuccess();
+          onClose();
+        };
+        
+        pollForLatex();
+      } else {
+        // Not a PDF or already has LaTeX
+        onSuccess();
+        onClose();
+      }
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Upload failed');
-    } finally {
       setUploading(false);
+      setConverting(false);
+    } finally {
+      if (!converting) {
+        setUploading(false);
+      }
     }
   };
 
@@ -725,13 +822,21 @@ function UploadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
             </div>
           )}
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 flex-1" disabled={uploading}>
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 flex-1" disabled={uploading || converting}>
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white rounded-lg font-medium flex-1" disabled={uploading || !file}>
-              {uploading ? 'Uploading...' : 'Upload'}
+            <button type="submit" className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white rounded-lg font-medium flex-1" disabled={uploading || converting || !file}>
+              {converting ? 'Converting to LaTeX...' : uploading ? 'Uploading...' : 'Upload'}
             </button>
           </div>
+          {converting && (
+            <div className="mt-3 p-3 bg-purple-900/20 border border-purple-700/50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
+                <span className="text-xs text-gray-300">Converting PDF to LaTeX... This may take a minute.</span>
+              </div>
+            </div>
+          )}
         </form>
       </div>
     </div>
