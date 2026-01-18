@@ -4,6 +4,7 @@ import { X, Upload, FileText, Loader2 } from 'lucide-react';
 import { communicationsApi } from '../api/client';
 import { useApplicationStore } from '../store/applicationStore';
 import type { Communication, CommunicationCreate, Application, ApplicationStatus } from '../types';
+import { getCurrentEdmontonDateTime, edmontonDateTimeToISO } from '../utils/dateUtils';
 
 interface CreateCommunicationModalProps {
   application: Application;
@@ -23,7 +24,7 @@ function CreateCommunicationModal({
     application_id: application.id,
     type: 'Note',
     message: '',
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toISOString(), // Will be displayed in Edmonton time
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
@@ -281,12 +282,30 @@ function CreateCommunicationModal({
 
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
-              Date & Time
+              Date & Time <span className="text-xs text-gray-500">(Edmonton time)</span>
             </label>
             <input
               type="datetime-local"
-              value={new Date(formData.timestamp).toISOString().slice(0, 16)}
-              onChange={(e) => setFormData({ ...formData, timestamp: new Date(e.target.value).toISOString() })}
+              value={(() => {
+                // Convert ISO timestamp to Edmonton time for display
+                const date = new Date(formData.timestamp);
+                const edmontonTime = date.toLocaleString('en-CA', {
+                  timeZone: 'America/Edmonton',
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false,
+                }).replace(', ', 'T');
+                return edmontonTime;
+              })()}
+              onChange={(e) => {
+                // Convert Edmonton time input to UTC ISO string
+                const edmontonDateTime = e.target.value;
+                const isoString = edmontonDateTimeToISO(edmontonDateTime);
+                setFormData({ ...formData, timestamp: isoString });
+              }}
               className="w-full px-3 py-2 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-gray-700 text-gray-100"
               required
             />
