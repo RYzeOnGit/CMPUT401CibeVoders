@@ -16,6 +16,8 @@ import type {
   ReminderCreate,
   ReminderUpdate,
   AutofillParseRequest,
+  ResponseTrackingSummary,
+  GlobalResponseStatistics,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -132,20 +134,19 @@ export const communicationsApi = {
     return response.data;
   },
 
-  processImage: async (file: File, applicationId?: number): Promise<{ type: Communication['type']; message: string }> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const params = applicationId !== undefined ? { application_id: applicationId } : {};
-    const response = await api.post<{ type: Communication['type']; message: string }>(
-      '/api/communications/process-image',
-      formData,
-      {
-        params,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      }
-    );
+  // Response Tracking API - Get response tracking statistics summary
+  // Usage: const summaries = await communicationsApi.getTrackingSummary();
+  // Or get statistics for a specific application: const summary = await communicationsApi.getTrackingSummary(applicationId);
+  getTrackingSummary: async (applicationId?: number): Promise<ResponseTrackingSummary[]> => {
+    const params = applicationId ? { application_id: applicationId } : {};
+    const response = await api.get<ResponseTrackingSummary[]>('/api/communications/tracking/summary', { params });
+    return response.data;
+  },
+
+  // Get global response statistics
+  // Usage: const stats = await communicationsApi.getGlobalStatistics();
+  getGlobalStatistics: async (): Promise<GlobalResponseStatistics> => {
+    const response = await api.get<GlobalResponseStatistics>('/api/communications/tracking/statistics');
     return response.data;
   },
 };

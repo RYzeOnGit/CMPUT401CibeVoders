@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, ArrowLeft, Plus, Upload, X, Trash2, Copy, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize, Crown } from 'lucide-react';
+import { FileText, ArrowLeft, Plus, Upload, X, Trash2, Copy, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize, Edit } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { resumesApi } from '../api/client';
 import type { Resume } from '../types';
+import EditResumeModal from '../components/EditResumeModal';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -17,7 +18,8 @@ export default function ResumesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingResumeId, setEditingResumeId] = useState<number | null>(null);
   useEffect(() => {
     fetchResumes();
   }, []);
@@ -168,6 +170,17 @@ export default function ResumesPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        setSelectedResume(resume);
+                        setEditingResumeId(resume.id);
+                        setShowEditModal(true);
+                      }}
+                      className="absolute top-2 right-10 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-gray-700/50 rounded text-gray-400 hover:text-gray-200"
+                    >
+                      <Edit size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
                         handleDelete(resume.id);
                       }}
                       className="absolute top-2 right-2 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-red-900/30 rounded text-gray-400 hover:text-red-400"
@@ -204,6 +217,16 @@ export default function ResumesPage() {
       {/* Modals */}
       {showUploadModal && <UploadModal onClose={() => setShowUploadModal(false)} onSuccess={fetchResumes} />}
       {showCreateModal && <CreateModal onClose={() => setShowCreateModal(false)} onSuccess={fetchResumes} />}
+      {showEditModal && editingResumeId && (
+        <EditResumeModal
+          resumeId={editingResumeId}
+          onClose={() => {
+            setShowEditModal(false);
+            setEditingResumeId(null);
+          }}
+          onSuccess={fetchResumes}
+        />
+      )}
     </div>
   );
 }
@@ -464,15 +487,15 @@ function UploadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Resume File (PDF, DOCX)</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Resume File (PDF, DOCX, TEX)</label>
             <input
               type="file"
-              accept=".pdf,.docx"
+              accept=".pdf,.docx,.tex"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) {
                   setFile(f);
-                  if (!name) setName(f.name.replace(/\.(pdf|docx)$/i, ''));
+                  if (!name) setName(f.name.replace(/\.(pdf|docx|tex)$/i, ''));
                 }
               }}
               className="w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-700 text-gray-100"
