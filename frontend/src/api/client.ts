@@ -131,6 +131,23 @@ export const communicationsApi = {
     const response = await api.post<Communication>('/api/communications', data);
     return response.data;
   },
+
+  processImage: async (file: File, applicationId?: number): Promise<{ type: Communication['type']; message: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const params = applicationId !== undefined ? { application_id: applicationId } : {};
+    const response = await api.post<{ type: Communication['type']; message: string }>(
+      '/api/communications/process-image',
+      formData,
+      {
+        params,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data;
+  },
 };
 
 // Reminders API
