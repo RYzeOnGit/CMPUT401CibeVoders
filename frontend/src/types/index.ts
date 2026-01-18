@@ -75,7 +75,7 @@ export type SectionData =
   | { type: 'text'; content: string }
   | { type: 'bullet-points'; items: BulletPointItem[] }
   | { type: 'list'; items: string[] }
-  | { type: 'education'; degree: string; university: string; year: string };
+  | { type: 'education'; degree: string; university: string; year: string; description?: string };
 
 export interface BulletPointItem {
   company?: string;

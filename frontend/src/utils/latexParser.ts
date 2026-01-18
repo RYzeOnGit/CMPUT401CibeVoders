@@ -1,4 +1,47 @@
-import type { ResumeContent, Experience } from '../types';
+import type { ResumeContent, Experience, GenericSection } from '../types';
+import { generateSectionId } from './sectionMigration';
+
+/**
+ * Clean LaTeX text by removing commands and formatting
+ */
+function cleanLatexText(text: string): string {
+  return text
+    // Remove \item
+    .replace(/\\item\s+/g, '')
+    // Extract content from formatting commands: \textbf{content} -> content
+    .replace(/\\textbf\{([^}]+)\}/g, '$1')
+    .replace(/\\textit\{([^}]+)\}/g, '$1')
+    .replace(/\\emph\{([^}]+)\}/g, '$1')
+    .replace(/\\underline\{([^}]+)\}/g, '$1')
+    // Extract content from links: \href{url}{text} -> text
+    .replace(/\\href\{[^}]+\}\{([^}]+)\}/g, '$1')
+    .replace(/\\underlinedLink\{[^}]+\}\{([^}]+)\}/g, '$1')
+    .replace(/\\url\{([^}]+)\}/g, '$1')
+    // Remove sectionsep and vspace
+    .replace(/\\sectionsep/g, '')
+    .replace(/\\vspace\{[^}]+\}/g, '')
+    .replace(/\\hspace\{[^}]+\}/g, '')
+    // Remove line breaks
+    .replace(/\\\\/g, ' ')
+    .replace(/\\newline/g, ' ')
+    // Remove comments
+    .replace(/%.*$/gm, '')
+    // Remove other common commands
+    .replace(/\\noindent/g, '')
+    .replace(/\\par\b/g, '')
+    // Remove ANY remaining LaTeX commands with arguments: \command{arg1}{arg2}... -> arg1 arg2 ...
+    .replace(/\\[a-zA-Z]+\{([^}]*)\}(?:\{([^}]*)\})?(?:\{([^}]*)\})?(?:\{([^}]*)\})?/g, (match, p1, p2, p3, p4) => {
+      return [p1, p2, p3, p4].filter(Boolean).join(' ');
+    })
+    // Remove any remaining backslash commands: \command -> ''
+    .replace(/\\[a-zA-Z]+/g, '')
+    // Remove stray braces
+    .replace(/[{}]/g, '')
+    // Remove multiple spaces
+    .replace(/\s+/g, ' ')
+    // Trim
+    .trim();
+}
 
 /**
  * Parses LaTeX content and extracts structured resume data
@@ -10,13 +53,12 @@ export function parseLatexToContent(latex: string): ResumeContent {
     name: '',
     email: '',
     phone: '',
-    summary: '',
-    experience: [],
-    skills: [],
-    education: { degree: '', university: '', year: '' }
+    sections: []
   };
 
   if (!latex) return parsed;
+  
+  console.log('Parsing LaTeX, length:', latex.length);
 
   // Extract name - common patterns: \name{}, \author{}, \fullname{}
   const namePatterns = [
@@ -28,7 +70,7 @@ export function parseLatexToContent(latex: string): ResumeContent {
   for (const pattern of namePatterns) {
     const match = latex.match(pattern);
     if (match) {
-      parsed.name = match[1].trim();
+      parsed.name = cleanLatexText(match[1]);
       break;
     }
   }
@@ -42,7 +84,7 @@ export function parseLatexToContent(latex: string): ResumeContent {
   for (const pattern of emailPatterns) {
     const match = latex.match(pattern);
     if (match) {
-      parsed.email = match[1].trim();
+      parsed.email = cleanLatexText(match[1]);
       break;
     }
   }
@@ -56,7 +98,7 @@ export function parseLatexToContent(latex: string): ResumeContent {
   for (const pattern of phonePatterns) {
     const match = latex.match(pattern);
     if (match) {
-      parsed.phone = match[1].trim();
+      parsed.phone = cleanLatexText(match[1]);
       break;
     }
   }
@@ -65,7 +107,9 @@ export function parseLatexToContent(latex: string): ResumeContent {
   const summaryPatterns = [
     /\\section\{Summary\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i,
     /\\section\{Objective\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i,
-    /\\section\{About\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i
+    /\\section\{About\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i,
+    /\\section\*?\{Professional Summary\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i,
+    /\\section\*?\{Profile\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i
   ];
   for (const pattern of summaryPatterns) {
     const match = latex.match(pattern);
@@ -79,13 +123,29 @@ export function parseLatexToContent(latex: string): ResumeContent {
         .replace(/\{|\}/g, '')
         .trim();
       parsed.summary = summaryText;
+      console.log('Found summary:', summaryText.substring(0, 100));
       break;
     }
   }
+  console.log('Summary extraction complete:', parsed.summary ? 'Found' : 'Not found');
 
   // Extract experience
-  const experiencePattern = /\\section\{Experience\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i;
-  const expMatch = latex.match(experiencePattern);
+  const experiencePatterns = [
+    /\\section\*?\{Experience\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i,
+    /\\section\*?\{Work Experience\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i,
+    /\\section\*?\{Professional Experience\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i,
+    /\\section\*?\{Employment\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i
+  ];
+  
+  let expMatch = null;
+  for (const pattern of experiencePatterns) {
+    expMatch = latex.match(pattern);
+    if (expMatch) {
+      console.log('Found experience section with pattern:', pattern);
+      break;
+    }
+  }
+  
   if (expMatch) {
     const expContent = expMatch[1];
     
@@ -135,11 +195,27 @@ export function parseLatexToContent(latex: string): ResumeContent {
     }
     
     parsed.experience = expEntries;
+    console.log('Experience extraction complete:', expEntries.length, 'entries');
+  } else {
+    console.log('No experience section found');
   }
 
   // Extract skills
-  const skillsPattern = /\\section\{Skills?\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i;
-  const skillsMatch = latex.match(skillsPattern);
+  const skillsPatterns = [
+    /\\section\*?\{Skills?\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i,
+    /\\section\*?\{Technical Skills\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i,
+    /\\section\*?\{Core Competencies\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i
+  ];
+  
+  let skillsMatch = null;
+  for (const pattern of skillsPatterns) {
+    skillsMatch = latex.match(pattern);
+    if (skillsMatch) {
+      console.log('Found skills section with pattern:', pattern);
+      break;
+    }
+  }
+  
   if (skillsMatch) {
     const skillsContent = skillsMatch[1];
     // Extract from itemize or comma-separated
@@ -157,6 +233,9 @@ export function parseLatexToContent(latex: string): ResumeContent {
         .trim();
       parsed.skills = skillsText.split(/[,;]/).map(s => s.trim()).filter(s => s);
     }
+    console.log('Skills extraction complete:', parsed.skills.length, 'skills');
+  } else {
+    console.log('No skills section found');
   }
 
   // Extract education
@@ -191,5 +270,365 @@ export function parseLatexToContent(latex: string): ResumeContent {
     }
   }
 
+  // Extract all sections dynamically
+  const sectionRegex = /\\section\*?\{([^}]+)\}/g;
+  const sectionMatches = Array.from(latex.matchAll(sectionRegex));
+  const sections: GenericSection[] = [];
+  
+  console.log(`Found ${sectionMatches.length} sections in total`);
+  
+  for (let i = 0; i < sectionMatches.length; i++) {
+    const match = sectionMatches[i];
+    const sectionName = match[1].trim();
+    
+    // Get content from after this section heading to before the next section heading (or end)
+    const startIndex = match.index! + match[0].length;
+    const nextMatch = sectionMatches[i + 1];
+    const endIndex = nextMatch ? nextMatch.index! : latex.length;
+    
+    let sectionContent = latex.substring(startIndex, endIndex).trim();
+    
+    // Also check for \end{document} within this content and stop there
+    const endDocMatch = sectionContent.match(/\\end\{document\}/);
+    if (endDocMatch) {
+      sectionContent = sectionContent.substring(0, endDocMatch.index).trim();
+    }
+    
+    console.log(`Found section: "${sectionName}"`);
+    console.log(`  -> Content length: ${sectionContent.length}`);
+    console.log(`  -> Last 200 chars:`, sectionContent.substring(Math.max(0, sectionContent.length - 200)));
+    
+    if (!sectionContent) {
+      console.log(`  -> Empty section, skipping`);
+      continue;
+    }
+    
+    // Parse section content based on structure
+    const section = parseSectionContent(sectionName, sectionContent);
+    if (section) {
+      sections.push(section);
+      console.log(`  -> Created section with type: ${section.type}`);
+      if (section.type === 'bullet-points') {
+        console.log(`  -> Items count: ${section.data.items.length}`, section.data.items);
+      } else if (section.type === 'list') {
+        console.log(`  -> List items: ${section.data.items.length}`);
+      } else if (section.type === 'text') {
+        console.log(`  -> Content length: ${section.data.content.length}`);
+      }
+    }
+  }
+  
+  parsed.sections = sections;
+  console.log(`Total sections extracted: ${sections.length}`);
+  
   return parsed;
+}
+
+/**
+ * Parse a section's content and determine its structure
+ */
+function parseSectionContent(sectionName: string, content: string): GenericSection | null {
+  // Check if this is an education section
+  const hasEducationHeading = /\\educationHeading\{/.test(content);
+  if (hasEducationHeading || /education/i.test(sectionName)) {
+    return parseEducationSection(sectionName, content);
+  }
+  
+  // Check if this looks like an experience/work section (has \resumeHeading, \projectHeading, or multiple entries)
+  const hasResumeHeading = /\\resumeHeading\{/.test(content);
+  const hasProjectHeading = /\\projectHeading/.test(content);
+  const hasItemize = /\\begin\{(bullets|itemize)\}/.test(content);
+  
+  if (hasResumeHeading || hasProjectHeading || (hasItemize && /\\textbf\{[^}]+\}.*\\textit\{[^}]+\}/.test(content))) {
+    // This is an experience-like section with entries
+    return parseExperienceSection(sectionName, content);
+  } else if (hasItemize) {
+    // This is a list section (skills, etc.)
+    return parseListSection(sectionName, content);
+  } else {
+    // This is a text section (summary, etc.)
+    return parseTextSection(sectionName, content);
+  }
+}
+
+/**
+ * Parse experience-like sections (Work Experience, Projects, etc.)
+ */
+function parseExperienceSection(sectionName: string, content: string): GenericSection {
+  const items: any[] = [];
+  
+  console.log(`  -> Parsing as experience section, content length: ${content.length}`);
+  console.log(`  -> First 300 chars:`, content.substring(0, 300));
+  console.log(`  -> Has \\resumeHeading:`, content.includes('\\resumeHeading'));
+  console.log(`  -> Has \\projectHeading:`, content.includes('\\projectHeading'));
+  console.log(`  -> Has \\textbf:`, content.includes('\\textbf'));
+  
+  // Try to find \resumeHeading{company}{role}{location}{duration}
+  const resumeHeadingRegex = /\\resumeHeading\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}/g;
+  let match;
+  let lastIndex = 0;
+  
+  let headingMatches = Array.from(content.matchAll(resumeHeadingRegex));
+  console.log(`  -> Found ${headingMatches.length} resumeHeading entries`);
+  
+  // Debug: show where each match is
+  headingMatches.forEach((m, i) => {
+    console.log(`     Match ${i+1} at index ${m.index}: ${m[1]} - ${m[2]}`);
+  });
+  
+  // Also try \projectHeading{title}{url}{tech}
+  if (headingMatches.length === 0) {
+    const projectHeadingRegex = /\\projectHeading(?:WithDate)?\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}(?:\{([^}]*)\})?/g;
+    const projectMatches = Array.from(content.matchAll(projectHeadingRegex));
+    console.log(`  -> Found ${projectMatches.length} projectHeading entries`);
+    
+    // Debug: show where each match is
+    projectMatches.forEach((m, i) => {
+      console.log(`     Match ${i+1} at index ${m.index}: ${m[1]}`);
+    });
+    
+    for (let i = 0; i < projectMatches.length; i++) {
+      const match = projectMatches[i];
+      const title = cleanLatexText(match[1]);
+      const url = match[2].trim();
+      const tech = cleanLatexText(match[3]);
+      const date = match[4] ? cleanLatexText(match[4]) : '';
+      
+      console.log(`  -> Project Entry ${i+1}: ${title}`);
+      
+      // Find content after this heading until next heading or \sectionsep
+      const startIndex = match.index! + match[0].length;
+      const nextMatch = projectMatches[i + 1];
+      const endIndex = nextMatch ? nextMatch.index! : content.length;
+      const itemContent = content.substring(startIndex, endIndex);
+      
+      // Extract description (text after the heading, before \sectionsep)
+      const description = cleanLatexText(itemContent.replace(/\\sectionsep/g, ''));
+      console.log(`  -> Project Description length: ${description.length}`);
+      
+      if (title || description) {
+        items.push({
+          company: title,
+          role: tech, // Put tech stack in role field
+          duration: date,
+          description: description
+        });
+      }
+    }
+  }
+  
+  for (let i = 0; i < headingMatches.length; i++) {
+    const match = headingMatches[i];
+    const company = match[1].trim();
+    const role = match[2].trim();
+    const location = match[3].trim();
+    const duration = match[4].trim();
+    
+    console.log(`  -> Entry ${i+1}: ${company} - ${role}`);
+    
+    // Find the content after this heading until the next heading or \sectionsep
+    const startIndex = match.index + match[0].length;
+    const nextMatch = headingMatches[i + 1];
+    const endIndex = nextMatch ? nextMatch.index : content.length;
+    const itemContent = content.substring(startIndex, endIndex);
+    
+    // Extract bullet points from \begin{bullets} or \begin{itemize}
+    const description = extractBulletPoints(itemContent);
+    console.log(`  -> Description length: ${description.length}`);
+    
+    items.push({
+      company: company || '',
+      role: role || '',
+      duration: duration || location || '', // Use location as duration if no duration
+      description: description
+    });
+  }
+  
+  // If no resumeHeading found, try alternative formats (textbf with itemize)
+  if (items.length === 0) {
+    console.log(`  -> Trying alternative format (textbf/textit/itemize)`);
+    
+    // Match: \textbf{title} ... followed by content until next \textbf or \vspace or end
+    const altFormat = /\\textbf\{([^}]+)\}([\s\S]*?)(?=\\textbf\{|\\vspace|\\section|$)/g;
+    const altMatches = Array.from(content.matchAll(altFormat));
+    
+    console.log(`  -> Found ${altMatches.length} textbf entries`);
+    
+    for (let i = 0; i < altMatches.length; i++) {
+      const match = altMatches[i];
+      const title = match[1].trim();
+      const itemContent = match[2].trim();
+      
+      console.log(`  -> Alt Entry ${i+1}: ${title}`);
+      
+      // Try to extract tech stack or subtitle from \textit{}
+      const techStackMatch = itemContent.match(/\\textit\{([^}]+)\}/);
+      const subtitle = techStackMatch ? techStackMatch[1].trim() : '';
+      
+      // Extract bullet points
+      const description = extractBulletPoints(itemContent);
+      console.log(`  -> Alt Description length: ${description.length}`);
+      
+      if (description || subtitle) {
+        items.push({
+          company: title,
+          role: subtitle,
+          duration: '',
+          description: description
+        });
+      }
+    }
+  }
+  
+  console.log(`  -> Total items parsed for ${sectionName}: ${items.length}`);
+  items.forEach((item, i) => {
+    console.log(`     Item ${i+1}: ${item.company} | ${item.role} | ${item.duration}`);
+  });
+  
+  return {
+    id: generateSectionId(),
+    type: 'bullet-points',
+    name: sectionName,
+    bulletPointType: sectionName.toLowerCase().includes('project') ? 'projects' : 'work-experience',
+    data: {
+      type: 'bullet-points',
+      items: items
+    }
+  };
+}
+
+/**
+ * Parse education sections
+ */
+function parseEducationSection(sectionName: string, content: string): GenericSection {
+  console.log(`  -> Parsing as education section`);
+  
+  // Try to extract \educationHeading{degree}{university}{location}{date}
+  const educationHeadingRegex = /\\educationHeading\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}/;
+  const match = content.match(educationHeadingRegex);
+  
+  let degree = '';
+  let university = '';
+  let year = '';
+  let description = '';
+  
+  if (match) {
+    degree = cleanLatexText(match[1]);
+    university = cleanLatexText(match[2]);
+    const location = cleanLatexText(match[3]);
+    year = cleanLatexText(match[4]);
+    
+    console.log(`  -> Extracted: ${degree} from ${university}, ${year}`);
+    
+    // Extract any additional content after the heading
+    const headingEnd = match.index! + match[0].length;
+    const remainingContent = content.substring(headingEnd);
+    
+    // Look for additional descriptions, bullet points, or other content
+    description = cleanLatexText(remainingContent);
+  } else {
+    // Fallback: just clean the entire content
+    console.log(`  -> No educationHeading found, using fallback parsing`);
+    const cleaned = cleanLatexText(content);
+    
+    // Try to extract year
+    const yearMatch = cleaned.match(/\b(19|20)\d{2}\b/);
+    if (yearMatch) {
+      year = yearMatch[0];
+    }
+    
+    // Split content and try to identify degree/university
+    const parts = cleaned.split(/[,\-]/).map(p => p.trim()).filter(p => p && !p.match(/^\d{4}$/));
+    if (parts.length >= 2) {
+      degree = parts[0];
+      university = parts[1];
+    } else if (parts.length === 1) {
+      degree = parts[0];
+    }
+    
+    description = cleaned;
+  }
+  
+  return {
+    id: generateSectionId(),
+    type: 'education',
+    name: sectionName,
+    data: {
+      type: 'education',
+      degree: degree,
+      university: university,
+      year: year,
+      description: description
+    }
+  };
+}
+
+/**
+ * Extract bullet points from bullets/itemize environment
+ */
+function extractBulletPoints(content: string): string {
+  // Match \begin{bullets} or \begin{itemize}
+  const bulletMatch = content.match(/\\begin\{(bullets|itemize)\}([\s\S]*?)\\end\{\1\}/);
+  if (!bulletMatch) {
+    console.log('    -> No bullet/itemize environment found');
+    return '';
+  }
+  
+  const bulletContent = bulletMatch[2];
+  console.log('    -> Found bullet environment, content length:', bulletContent.length);
+  
+  // Match \item ... until next \item or end
+  const items = bulletContent.match(/\\item\s+([^\n]*(?:\n(?!\\item).*)*)/g) || [];
+  console.log('    -> Extracted items:', items.length);
+  
+  const cleanedItems = items
+    .map(item => cleanLatexText(item))
+    .filter(item => item.length > 0);
+  
+  console.log('    -> Cleaned items:', cleanedItems.length);
+  return cleanedItems.join('\n');
+}
+
+/**
+ * Parse list sections (Skills, etc.)
+ */
+function parseListSection(sectionName: string, content: string): GenericSection {
+  const description = extractBulletPoints(content);
+  const items = description ? description.split('\n') : [];
+  
+  // Also try comma-separated format
+  if (items.length === 0) {
+    const cleanText = cleanLatexText(content);
+    const commaSeparated = cleanText.split(/[,;]/).map(s => s.trim()).filter(s => s);
+    if (commaSeparated.length > 0) {
+      items.push(...commaSeparated);
+    }
+  }
+  
+  return {
+    id: generateSectionId(),
+    type: 'list',
+    name: sectionName,
+    data: {
+      type: 'list',
+      items: items
+    }
+  };
+}
+
+/**
+ * Parse text sections (Summary, etc.)
+ */
+function parseTextSection(sectionName: string, content: string): GenericSection {
+  const cleanText = cleanLatexText(content);
+  
+  return {
+    id: generateSectionId(),
+    type: 'text',
+    name: sectionName,
+    data: {
+      type: 'text',
+      content: cleanText
+    }
+  };
 }

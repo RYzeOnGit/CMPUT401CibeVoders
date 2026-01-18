@@ -100,9 +100,13 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
         
         setLatexContent(loadedLatex);
         
-        // Parse LaTeX content and merge with existing
+        // Parse LaTeX content and create sections from it
+        let parsedSections: GenericSection[] = [];
         if (loadedLatex) {
           const parsedContent = parseLatexToContent(loadedLatex);
+          console.log('Parsed LaTeX content:', parsedContent);
+          
+          // Update contact info from parsed LaTeX
           loadedContent = {
             name: parsedContent.name || loadedContent.name || '',
             email: parsedContent.email || loadedContent.email || '',
@@ -111,13 +115,21 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
             sections: loadedContent.sections,
             sectionOrder: loadedContent.sectionOrder,
           };
+          
+          // Use sections directly from parsed LaTeX (parser now creates sections)
+          parsedSections = parsedContent.sections || [];
+          console.log('Parsed sections from LaTeX:', parsedSections.length, parsedSections);
         }
         
+        console.log('Loading content:', loadedContent);
         setContent(loadedContent);
         
         // Load or migrate sections
         let loadedSections: GenericSection[] = [];
+        
+        // Priority: 1. Existing saved sections, 2. Parsed LaTeX sections, 3. Old format migration
         if (loadedContent.sections && loadedContent.sections.length > 0) {
+          console.log('Loading from saved sections');
           // Use new format sections - filter out any empty sections
           loadedSections = loadedContent.sections.filter(section => {
             // Keep section if it has meaningful content
@@ -136,18 +148,31 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
                 return true;
             }
           });
-        } else {
-          // Migrate from old format
+          console.log('Filtered saved sections:', loadedSections.length);
+        }
+        
+        // If no saved sections or all were filtered out, use parsed sections
+        if (loadedSections.length === 0 && parsedSections.length > 0) {
+          console.log('Using parsed LaTeX sections');
+          loadedSections = parsedSections;
+        }
+        
+        // Last resort: migrate from old format
+        if (loadedSections.length === 0) {
+          console.log('Migrating from old format');
           loadedSections = migrateToGenericSections(resumeData.content || {});
         }
         
+        console.log('Final loaded sections:', loadedSections.length, loadedSections);
         setSections(loadedSections);
         
         // Load section order
         if (loadedContent.sectionOrder && loadedContent.sectionOrder.length > 0) {
           setSectionOrder(loadedContent.sectionOrder);
         } else {
-          setSectionOrder(loadedSections.map(s => s.id));
+          const newOrder = loadedSections.map(s => s.id);
+          console.log('Creating new section order:', newOrder);
+          setSectionOrder(newOrder);
         }
       } catch (error) {
         console.error('Failed to load resume:', error);
@@ -183,9 +208,9 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
       return;
     }
     
-    // Parse LaTeX content and convert to generic sections
+    // Parse LaTeX content (now returns sections directly)
     const parsed = parseLatexToContent(latexContent);
-    const parsedSections = migrateToGenericSections(parsed);
+    const parsedSections = parsed.sections || [];
     
     setContent(prev => ({
       ...prev,
@@ -194,15 +219,12 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
       phone: parsed.phone || prev.phone || '',
     }));
     
-    // Merge parsed sections with existing, preserving order
-    setSections(prev => {
-      const existingIds = new Set(prev.map(s => s.id));
-      const newSections = parsedSections.filter(s => !existingIds.has(s.id));
-      return [...prev, ...newSections];
-    });
+    // Replace existing sections with parsed sections
+    setSections(parsedSections);
+    setSectionOrder(parsedSections.map(s => s.id));
     
     setViewMode('form');
-    alert('LaTeX content parsed and sections updated!');
+    alert(`LaTeX content parsed! Found ${parsedSections.length} sections.`);
   };
 
   const handleSave = async () => {
@@ -241,10 +263,24 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
 
       // Save content with sections
       const contentToSave: ResumeContent = {
-        ...content,
+        name: content.name,
+        email: content.email,
+        phone: content.phone,
         sections: sectionsToSave,
         sectionOrder: sectionOrder.filter(id => sectionsToSave.some(s => s.id === id)),
       };
+      
+      // Output formatted JSON for future styling function
+      const jsonOutput = JSON.stringify(contentToSave, null, 2);
+      console.log('========================================');
+      console.log('RESUME JSON OUTPUT (for styling function):');
+      console.log('========================================');
+      console.log(jsonOutput);
+      console.log('========================================');
+      
+      // Also save to localStorage for easy access
+      localStorage.setItem('latest_resume_json', jsonOutput);
+      
       await resumesApi.update(resumeId, { content: contentToSave });
       onSuccess();
       onClose();
@@ -293,7 +329,7 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
           case 'list':
             return { ...s, data: { type: 'list', items: [] } };
           case 'education':
-            return { ...s, data: { type: 'education', degree: '', university: '', year: '' } };
+            return { ...s, data: { type: 'education', degree: '', university: '', year: '', description: '' } };
           default:
             return s;
         }

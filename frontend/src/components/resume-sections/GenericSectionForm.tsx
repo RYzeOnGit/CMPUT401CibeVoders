@@ -194,50 +194,70 @@ export default function GenericSectionForm({
         const eduData = section.data;
         
         return (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Degree</label>
-              <input
-                type="text"
-                value={eduData.degree || ''}
-                onChange={(e) => updateData({ 
-                  type: 'education',
-                  degree: e.target.value,
-                  university: eduData.university || '',
-                  year: eduData.year || ''
-                })}
-                className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="Bachelor of Science"
-              />
+          <div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Degree</label>
+                <input
+                  type="text"
+                  value={eduData.degree || ''}
+                  onChange={(e) => updateData({ 
+                    type: 'education',
+                    degree: e.target.value,
+                    university: eduData.university || '',
+                    year: eduData.year || '',
+                    description: eduData.description
+                  })}
+                  className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="Bachelor of Science"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">University</label>
+                <input
+                  type="text"
+                  value={eduData.university || ''}
+                  onChange={(e) => updateData({ 
+                    type: 'education',
+                    degree: eduData.degree || '',
+                    university: e.target.value,
+                    year: eduData.year || '',
+                    description: eduData.description
+                  })}
+                  className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="University Name"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
+                <input
+                  type="text"
+                  value={eduData.year || ''}
+                  onChange={(e) => updateData({ 
+                    type: 'education',
+                    degree: eduData.degree || '',
+                    university: eduData.university || '',
+                    year: e.target.value,
+                    description: eduData.description
+                  })}
+                  className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="2020"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">University</label>
-              <input
-                type="text"
-                value={eduData.university || ''}
-                onChange={(e) => updateData({ 
+            <div className="mt-3">
+              <label className="block text-xs font-medium text-gray-400 mb-1">Description</label>
+              <textarea
+                value={eduData.description || ''}
+                onChange={(e) => updateData({
                   type: 'education',
                   degree: eduData.degree || '',
-                  university: e.target.value,
-                  year: eduData.year || ''
-                })}
-                className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="University Name"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
-              <input
-                type="text"
-                value={eduData.year || ''}
-                onChange={(e) => updateData({ 
-                  type: 'education',
-                  degree: eduData.degree || '',
                   university: eduData.university || '',
-                  year: e.target.value
+                  year: eduData.year || '',
+                  description: e.target.value
                 })}
-                className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="2020"
+                className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm resize-y min-h-[80px] focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="Relevant coursework, achievements, activities, etc..."
               />
             </div>
           </div>

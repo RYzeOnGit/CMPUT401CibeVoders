@@ -114,7 +114,7 @@ export function createEmptySection(type: SectionType, name: string, bulletPointT
         id,
         type: 'education',
         name,
-        data: { type: 'education', degree: '', university: '', year: '' }
+        data: { type: 'education', degree: '', university: '', year: '', description: '' }
       };
   }
 }

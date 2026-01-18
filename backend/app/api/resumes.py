@@ -109,13 +109,17 @@ async def upload_resume(
     # Validate file type - accept PDF and DOCX
     valid_types = [
         "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/x-tex",
+        "application/x-latex",
+        "text/x-tex",
+        "text/plain"  # Some systems detect .tex as plain text
     ]
     
     if file.content_type not in valid_types:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type. Supported types: PDF, DOCX. Got: {file.content_type}"
+            detail=f"Invalid file type. Supported types: PDF, DOCX, TEX. Got: {file.content_type}"
         )
     
     # Check file size (10MB limit)
