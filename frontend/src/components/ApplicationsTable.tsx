@@ -92,22 +92,30 @@ function ApplicationsTable({ applications, onOpenCommunications }: ApplicationsT
         cell: (info) => {
           const status = info.getValue();
           return (
-            <select
-              value={status}
-              onChange={(e) =>
-                updateApplication(info.row.original.id, {
-                  status: e.target.value as Application['status'],
-                })
-              }
-              className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                status
-              )} border-0 cursor-pointer`}
-            >
-              <option value="Applied">Applied</option>
-              <option value="Interview">Interview</option>
-              <option value="Offer">Offer</option>
-              <option value="Rejected">Rejected</option>
-            </select>
+            <div className="relative">
+              <select
+                value={status}
+                onChange={(e) =>
+                  updateApplication(info.row.original.id, {
+                    status: e.target.value as Application['status'],
+                  })
+                }
+                className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                  status
+                )} border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                style={{
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  appearance: 'none',
+                }}
+              >
+                <option value="Applied" style={{ background: 'rgb(31 41 55)', color: 'rgb(229 231 235)' }}>Applied</option>
+                <option value="Interview" style={{ background: 'rgb(31 41 55)', color: 'rgb(229 231 235)' }}>Interview</option>
+                <option value="Offer" style={{ background: 'rgb(31 41 55)', color: 'rgb(229 231 235)' }}>Offer</option>
+                <option value="Rejected" style={{ background: 'rgb(31 41 55)', color: 'rgb(229 231 235)' }}>Rejected</option>
+                <option value="Ghosted" style={{ background: 'rgb(31 41 55)', color: 'rgb(229 231 235)' }}>Ghosted</option>
+              </select>
+            </div>
           );
         },
       }),

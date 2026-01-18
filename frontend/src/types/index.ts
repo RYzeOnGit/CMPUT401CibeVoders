@@ -1,6 +1,6 @@
 /** TypeScript types for the application */
 
-export type ApplicationStatus = 'Applied' | 'Interview' | 'Offer' | 'Rejected';
+export type ApplicationStatus = 'Applied' | 'Interview' | 'Offer' | 'Rejected' | 'Ghosted';
 
 export type CommunicationType = 'Interview Invite' | 'Rejection' | 'Offer' | 'Note';
 

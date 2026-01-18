@@ -40,6 +40,7 @@ export default function AnalyticsPage() {
     const interviewRate = total > 0 ? ((byStatus['Interview'] || 0) / total) * 100 : 0;
     const offerRate = total > 0 ? ((byStatus['Offer'] || 0) / total) * 100 : 0;
     const rejectionRate = total > 0 ? ((byStatus['Rejected'] || 0) / total) * 100 : 0;
+    const ghostedRate = total > 0 ? ((byStatus['Ghosted'] || 0) / total) * 100 : 0;
 
     return {
       total,
@@ -47,60 +48,55 @@ export default function AnalyticsPage() {
       interviewRate: interviewRate.toFixed(1),
       offerRate: offerRate.toFixed(1),
       rejectionRate: rejectionRate.toFixed(1),
+      ghostedRate: ghostedRate.toFixed(1),
     };
   }, [filteredApplications]);
 
-  // Prepare Sankey data
+  // Prepare Sankey data - Applied on left, all outcomes on right
   const sankeyData = useMemo(() => {
     const nodes: Array<{ id: string; label: string }> = [
       { id: 'applied', label: 'Applied' },
       { id: 'interview', label: 'Interview' },
       { id: 'offer', label: 'Offer' },
       { id: 'rejected', label: 'Rejected' },
+      { id: 'ghosted', label: 'Ghosted' },
     ];
 
     const links: Array<{ source: string; target: string; value: number }> = [];
 
-    // Count transitions
-    const interviewCount = filteredApplications.filter(
-      (app) => app.status === 'Interview' || app.status === 'Offer' || app.status === 'Rejected'
-    ).length;
+    // Count each status directly from Applied
+    const offerCount = filteredApplications.filter((app) => app.status === 'Offer').length;
     const rejectedCount = filteredApplications.filter((app) => app.status === 'Rejected').length;
-    const interviewToOffer = filteredApplications.filter(
-      (app) => app.status === 'Offer'
-    ).length;
-    const interviewToRejected = filteredApplications.filter(
-      (app) => app.status === 'Rejected'
-    ).length;
+    const interviewCount = filteredApplications.filter((app) => app.status === 'Interview').length;
+    const ghostedCount = filteredApplications.filter((app) => app.status === 'Ghosted').length;
+
+    // Applied -> Offer
+    if (offerCount > 0) {
+      links.push({ source: 'applied', target: 'offer', value: offerCount });
+    }
+
+    // Applied -> Rejected
+    if (rejectedCount > 0) {
+      links.push({ source: 'applied', target: 'rejected', value: rejectedCount });
+    }
 
     // Applied -> Interview
     if (interviewCount > 0) {
       links.push({ source: 'applied', target: 'interview', value: interviewCount });
     }
 
-    // Applied -> Rejected (direct rejections without interview)
-    const directRejections = rejectedCount - interviewToRejected;
-    if (directRejections > 0) {
-      links.push({ source: 'applied', target: 'rejected', value: directRejections });
-    }
-
-    // Interview -> Offer
-    if (interviewToOffer > 0) {
-      links.push({ source: 'interview', target: 'offer', value: interviewToOffer });
-    }
-
-    // Interview -> Rejected
-    if (interviewToRejected > 0) {
-      links.push({ source: 'interview', target: 'rejected', value: interviewToRejected });
+    // Applied -> Ghosted
+    if (ghostedCount > 0) {
+      links.push({ source: 'applied', target: 'ghosted', value: ghostedCount });
     }
 
     return { nodes, links };
   }, [filteredApplications]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+    <div className="h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="bg-gray-800/95 backdrop-blur-md border-b border-gray-700/50 sticky top-0 z-50 shadow-lg">
+      <header className="bg-gray-800/95 backdrop-blur-md border-b border-gray-700/50 flex-shrink-0 z-50 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
@@ -125,9 +121,9 @@ export default function AnalyticsPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 flex flex-col overflow-hidden max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4">
         {/* Filters */}
-        <div className="mb-6 flex flex-wrap items-center gap-4">
+        <div className="mb-4 flex flex-wrap items-center gap-4 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Filter size={16} className="text-gray-400" />
             <span className="text-sm text-gray-400">Time Range:</span>
@@ -152,7 +148,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4 flex-shrink-0">
           <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-5">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-gray-400">Total Applications</span>
@@ -193,18 +189,29 @@ export default function AnalyticsPage() {
               {stats.byStatus['Rejected'] || 0} rejections
             </p>
           </div>
+
+          <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-gray-400">Ghosted Rate</span>
+              <TrendingDown size={18} className="text-gray-400" />
+            </div>
+            <p className="text-2xl font-bold text-gray-100">{stats.ghostedRate}%</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {stats.byStatus['Ghosted'] || 0} ghosted
+            </p>
+          </div>
         </div>
 
         {/* Sankey Diagram */}
-        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
-          <div className="mb-4">
+        <div className="flex-1 flex flex-col min-h-0 bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+          <div className="mb-3 flex-shrink-0">
             <h2 className="text-lg font-semibold text-gray-100 mb-1">Application Pipeline Flow</h2>
             <p className="text-sm text-gray-400">
               Visualize how your applications move through different stages
             </p>
           </div>
           {filteredApplications.length === 0 ? (
-            <div className="flex items-center justify-center h-64 text-gray-400">
+            <div className="flex items-center justify-center flex-1 text-gray-400">
               <div className="text-center">
                 <BarChart3 size={48} className="mx-auto mb-3 opacity-50" />
                 <p>No applications to visualize</p>
@@ -212,7 +219,7 @@ export default function AnalyticsPage() {
               </div>
             </div>
           ) : (
-            <div className="w-full overflow-x-auto">
+            <div className="flex-1 min-h-0 overflow-hidden">
               <SankeyDiagram data={sankeyData} />
             </div>
           )}

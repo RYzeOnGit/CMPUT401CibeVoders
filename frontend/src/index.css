@@ -48,3 +48,14 @@
   background-color: rgba(31, 41, 55, 0.5); /* gray-800/50 */
   border-radius: 9999px;
 }
+
+/* Select dropdown styling for dark theme */
+select option {
+  background-color: rgb(31 41 55) !important; /* gray-800 */
+  color: rgb(229 231 235) !important; /* gray-200 */
+}
+
+select:focus option:checked {
+  background-color: rgb(59 130 246) !important; /* blue-500 */
+  color: white !important;
+}

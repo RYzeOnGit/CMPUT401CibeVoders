@@ -32,19 +32,29 @@ export default function SankeyDiagram({ data }: SankeyDiagramProps) {
     const updateDimensions = () => {
       if (svgRef.current?.parentElement) {
         const containerWidth = svgRef.current.parentElement.clientWidth - 48; // Account for padding
-        const width = Math.max(900, containerWidth);
-        // Calculate height based on number of nodes for better scaling
-        const nodeCount = data.nodes.length;
-        const baseHeight = 400;
-        const height = Math.max(baseHeight, nodeCount * 120);
+        const width = Math.max(1000, containerWidth);
+        
+        // Calculate available height from parent container
+        const containerHeight = svgRef.current.parentElement.clientHeight;
+        const height = Math.max(400, containerHeight - 20); // Account for small margin
+        
         setDimensions({ width, height });
       }
     };
 
     updateDimensions();
     window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
-  }, [data.nodes.length]);
+    // Use ResizeObserver to watch parent container size changes
+    const resizeObserver = new ResizeObserver(updateDimensions);
+    if (svgRef.current?.parentElement) {
+      resizeObserver.observe(svgRef.current.parentElement);
+    }
+    
+    return () => {
+      window.removeEventListener('resize', updateDimensions);
+      resizeObserver.disconnect();
+    };
+  }, [data.nodes.length, data.links]);
 
   useEffect(() => {
     if (!svgRef.current || data.nodes.length === 0 || data.links.length === 0) return;
@@ -55,19 +65,20 @@ export default function SankeyDiagram({ data }: SankeyDiagramProps) {
     const { width, height } = dimensions;
     const margin = { top: 20, right: 20, bottom: 20, left: 20 };
 
-    // Color scheme
+    // Color scheme - matching the diagram
     const nodeColors: Record<string, string> = {
       applied: '#3b82f6', // blue
       interview: '#eab308', // yellow
       offer: '#22c55e', // green
       rejected: '#ef4444', // red
+      ghosted: '#6b7280', // grey
     };
 
     const linkColors: Record<string, string> = {
-      'applied-interview': '#60a5fa',
-      'applied-rejected': '#f87171',
-      'interview-offer': '#4ade80',
-      'interview-rejected': '#fb923c',
+      'applied-interview': '#eab308', // yellow
+      'applied-offer': '#22c55e', // green
+      'applied-rejected': '#ef4444', // red
+      'applied-ghosted': '#6b7280', // grey
     };
 
     // Prepare data for d3-sankey
@@ -81,14 +92,28 @@ export default function SankeyDiagram({ data }: SankeyDiagramProps) {
       value: link.value,
     }));
 
-    // Create Sankey generator with better scaling
+    // Calculate total value for proportional scaling
+    const totalValue = links.reduce((sum: number, link: any) => sum + link.value, 0);
+
+    // Create Sankey generator with improved scaling
     const nodeCount = nodes.length;
-    const nodeWidth = Math.max(15, Math.min(25, width / (nodeCount * 8)));
-    const nodePadding = Math.max(30, Math.min(60, height / (nodeCount * 2)));
+    
+    // Calculate optimal node width based on available space and data
+    // Left side has 1 node (Applied - make it wider), right side has (nodeCount - 1) nodes
+    const rightSideNodes = nodeCount - 1;
+    const availableWidth = width - margin.left - margin.right;
+    const defaultNodeWidth = Math.max(20, Math.min(30, availableWidth / 25));
+    const appliedNodeWidth = defaultNodeWidth * 1.8; // Make Applied node wider
+    
+    // Calculate optimal node padding based on height and number of nodes
+    // Distribute nodes evenly with good spacing
+    const availableHeight = height - margin.top - margin.bottom;
+    const maxPadding = availableHeight / (rightSideNodes + 1);
+    const nodePadding = Math.max(40, Math.min(80, maxPadding));
     
     const sankeyGenerator = sankey<Node, {}>()
       .nodeId((d: any) => d.id)
-      .nodeWidth(nodeWidth)
+      .nodeWidth(defaultNodeWidth)
       .nodePadding(nodePadding)
       .extent([
         [margin.left, margin.top],
@@ -100,6 +125,14 @@ export default function SankeyDiagram({ data }: SankeyDiagramProps) {
       nodes,
       links,
     });
+
+    // Make Applied node wider after computation
+    const appliedNode = computedNodes.find((n: any) => n.id === 'applied');
+    if (appliedNode) {
+      const widthIncrease = (appliedNodeWidth - defaultNodeWidth) / 2;
+      appliedNode.x0 = appliedNode.x0 - widthIncrease;
+      appliedNode.x1 = appliedNode.x1 + widthIncrease;
+    }
 
     // Create groups for links and nodes
     const linkGroup = svg.append('g').attr('class', 'links');
@@ -114,19 +147,24 @@ export default function SankeyDiagram({ data }: SankeyDiagramProps) {
       .append('path')
       .attr('d', sankeyLinkHorizontal())
       .attr('stroke', (d: any) => {
-        const key = `${d.source.id}-${d.target.id}`;
+        // Handle both string IDs and node objects
+        const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
+        const targetId = typeof d.target === 'string' ? d.target : d.target.id;
+        const key = `${sourceId}-${targetId}`;
         return linkColors[key] || '#94a3b8';
       })
-      .attr('stroke-width', (d: any) => Math.max(3, d.width || 3))
+      .attr('stroke-width', (d: any) => Math.max(4, Math.max(d.width || 4, (d.value / totalValue) * 30)))
       .attr('fill', 'none')
       .attr('opacity', 0.6)
       .style('cursor', 'pointer')
       .on('mouseenter', function (_event, d: any) {
-        d3.select(this).attr('opacity', 1).attr('stroke-width', Math.max(4, (d.width || 3) + 2));
+        const baseWidth = Math.max(4, Math.max(d.width || 4, (d.value / totalValue) * 30));
+        d3.select(this).attr('opacity', 1).attr('stroke-width', baseWidth + 3);
       })
       .on('mouseleave', function (_event) {
         const d = d3.select(this).datum() as any;
-        d3.select(this).attr('opacity', 0.6).attr('stroke-width', Math.max(3, d.width || 3));
+        const baseWidth = Math.max(4, Math.max(d.width || 4, (d.value / totalValue) * 30));
+        d3.select(this).attr('opacity', 0.6).attr('stroke-width', baseWidth);
       });
 
     // Draw nodes
@@ -246,7 +284,9 @@ export default function SankeyDiagram({ data }: SankeyDiagramProps) {
         width={dimensions.width}
         height={dimensions.height}
         className="w-full"
-        style={{ minHeight: '400px', maxHeight: '800px' }}
+        style={{ minHeight: '500px' }}
+        viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
+        preserveAspectRatio="xMidYMid meet"
       />
       <style>{`
         .sankey-tooltip {
