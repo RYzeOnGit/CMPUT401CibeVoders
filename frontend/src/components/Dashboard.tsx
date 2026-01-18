@@ -40,9 +40,6 @@ function Dashboard({ viewMode }: DashboardProps) {
                   Jobvibe
                 </h1>
               </div>
-              <span className="hidden sm:inline px-2.5 py-1 text-xs font-semibold bg-gradient-to-r from-primary-100 to-primary-50 text-primary-700 rounded-full border border-primary-200">
-                Demo Mode
-              </span>
             </div>
             <div className="flex items-center gap-2 md:gap-3">
               {/* Mobile: Icon buttons only */}
