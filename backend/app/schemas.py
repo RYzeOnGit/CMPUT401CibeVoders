@@ -72,18 +72,69 @@ class Resume(ResumeBase):
 # Communication schemas
 class CommunicationBase(BaseModel):
     application_id: int
-    type: str
+    type: str  # Interview Invite | Rejection | Offer | Note | Follow-up
     message: Optional[str] = None
-    timestamp: datetime
+    sender_name: Optional[str] = None
+    sender_email: Optional[str] = None
+    response_date: Optional[datetime] = None
+    timestamp: Optional[datetime] = None
 
 
-class CommunicationCreate(CommunicationBase):
-    pass
+class CommunicationCreate(BaseModel):
+    """Schema for creating a new communication - timestamp is set server-side."""
+    model_config = ConfigDict(extra='forbid')
+    
+    application_id: int
+    type: str  # Interview Invite | Rejection | Offer | Note | Follow-up
+    message: Optional[str] = None
+    sender_name: Optional[str] = None
+    sender_email: Optional[str] = None
+    response_date: Optional[datetime] = None
+    # Note: timestamp is excluded from create - it's set automatically on server
+
+
+class CommunicationUpdate(BaseModel):
+    type: Optional[str] = None
+    message: Optional[str] = None
+    sender_name: Optional[str] = None
+    sender_email: Optional[str] = None
+    response_date: Optional[datetime] = None
 
 
 class Communication(CommunicationBase):
     id: int
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# Response Tracking schemas
+class ResponseTrackingSummary(BaseModel):
+    """Summary of responses for an application."""
+    application_id: int
+    company_name: str
+    role_title: str
+    total_responses: int
+    interview_invites: int
+    rejections: int
+    offers: int
+    latest_response_date: Optional[datetime] = None
+    latest_response_type: Optional[str] = None
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GlobalResponseStatistics(BaseModel):
+    """Global statistics across all applications."""
+    total_applications: int
+    total_communications: int
+    total_interview_invites: int
+    total_rejections: int
+    total_offers: int
+    response_rate: float  # Percentage of applications with at least one response
+    interview_rate: float  # Percentage of applications with interview invites
+    offer_rate: float  # Percentage of applications with offers
 
     model_config = ConfigDict(from_attributes=True)
 

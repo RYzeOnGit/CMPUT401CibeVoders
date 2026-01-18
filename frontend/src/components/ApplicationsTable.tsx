@@ -16,16 +16,15 @@ import { getStatusColor } from '../utils/statusColors';
 import { formatDate } from '../utils/dateUtils';
 import { useApplicationStore } from '../store/applicationStore';
 import EditableCell from './EditableCell';
-import { Trash2, ChevronLeft, ChevronRight, Search, X, MessageSquare } from 'lucide-react';
+import { Trash2, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 
 interface ApplicationsTableProps {
   applications: Application[];
-  onOpenCommunications?: (application: Application) => void;
 }
 
 const columnHelper = createColumnHelper<Application>();
 
-function ApplicationsTable({ applications, onOpenCommunications }: ApplicationsTableProps) {
+function ApplicationsTable({ applications }: ApplicationsTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -138,23 +137,9 @@ function ApplicationsTable({ applications, onOpenCommunications }: ApplicationsT
       }),
       columnHelper.display({
         id: 'actions',
-        header: '',
+        header: 'Actions',
         cell: (info) => (
           <div className="flex items-center gap-2">
-            {onOpenCommunications && (
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onOpenCommunications(info.row.original);
-                }}
-                className="text-blue-400 hover:text-blue-300 transition-colors p-1.5 rounded hover:bg-blue-900/30 opacity-70 hover:opacity-100"
-                title="View communications"
-                type="button"
-              >
-                <MessageSquare size={16} />
-              </button>
-            )}
             <button
               onClick={(e) => {
                 e.preventDefault();
