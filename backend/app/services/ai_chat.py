@@ -23,14 +23,30 @@ def get_openai_client():
 
 
 async def extract_resume_text_from_tex(resume: Resume) -> str:
-    """Extract resume text from .tex file."""
-    if not resume.file_data:
-        return "No .tex file available for this resume."
+    """Extract resume text from LaTeX content."""
+    # Use latex_content field (preferred) or try to decode file_data if it's text
+    tex_content = None
+    
+    # First, try latex_content field (stores LaTeX as text)
+    if resume.latex_content:
+        tex_content = resume.latex_content
+    # Fallback: if file_data exists and is small, might be LaTeX text (not PDF)
+    elif resume.file_data and len(resume.file_data) < 500000:  # PDFs are usually larger
+        try:
+            # Try to decode as text (might be LaTeX)
+            tex_content = resume.file_data.decode('utf-8')
+            # Check if it looks like LaTeX (not PDF)
+            if not tex_content.startswith('%PDF') and ('\\documentclass' in tex_content or '\\begin{' in tex_content):
+                pass  # It's LaTeX, use it
+            else:
+                tex_content = None  # It's probably a PDF, don't use it
+        except (UnicodeDecodeError, AttributeError):
+            tex_content = None
+    
+    if not tex_content:
+        return "No LaTeX content available for this resume."
     
     try:
-        # .tex files are text-based, so we can decode them directly
-        tex_content = resume.file_data.decode('utf-8')
-        
         # If we have structured content, combine it with the .tex source
         if resume.content:
             structured = format_resume_content(resume.content)
@@ -39,18 +55,11 @@ async def extract_resume_text_from_tex(resume: Resume) -> str:
         
         return tex_content
         
-    except UnicodeDecodeError:
-        # Try with different encoding if UTF-8 fails
-        try:
-            tex_content = resume.file_data.decode('latin-1')
-            return tex_content
-        except Exception as e:
-            return f"Error decoding .tex file: {str(e)}"
     except Exception as e:
         # Final fallback to structured content
         if resume.content:
             return format_resume_content(resume.content)
-        return f"Error processing .tex file: {str(e)}"
+        return f"Error processing LaTeX content: {str(e)}"
 
 
 async def critique_resume(resume: Resume, user_message: str = "", conversation_history: List[Dict[str, str]] = []) -> str:
