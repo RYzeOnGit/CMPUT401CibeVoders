@@ -1,24 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Plus, Trash2, FileText, GripVertical, RefreshCw, Edit2, Save } from 'lucide-react';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import type { DragEndEvent } from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { useState, useEffect } from 'react';
+import { X, Plus, Trash2, FileText, RefreshCw, Edit2, Save } from 'lucide-react';
 import { resumesApi } from '../api/client';
-import type { Resume, ResumeContent, Experience, Education } from '../types';
+import type { Resume, ResumeContent, Experience } from '../types';
 
 interface EditResumeModalProps {
   resumeId: number;
@@ -41,62 +24,16 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
   const [saving, setSaving] = useState(false);
   const [viewMode, setViewMode] = useState<'form' | 'latex'>('form');
   const [latexContent, setLatexContent] = useState<string>('');
-  const [sections, setSections] = useState<Array<{ id: string; name: string; content: string }>>([]);
-  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [sectionNames, setSectionNames] = useState({
+    summary: 'Summary',
+    experience: 'Experience',
+    skills: 'Skills',
+    education: 'Education'
+  });
+  const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editingSectionName, setEditingSectionName] = useState<string>('');
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8, // Require 8px of movement before dragging starts
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
-  // Parse LaTeX to extract all sections dynamically
-  const parseLatexSections = (latex: string): Array<{ id: string; name: string; content: string }> => {
-    const sections: Array<{ id: string; name: string; content: string }> = [];
-    
-    if (!latex) return sections;
-    
-    // Extract all \section{Name}... patterns
-    const sectionPattern = /\\section\{([^}]+)\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/gi;
-    let match;
-    let sectionIndex = 0;
-    
-    while ((match = sectionPattern.exec(latex)) !== null) {
-      const sectionName = match[1].trim();
-      let sectionContent = match[2].trim();
-      
-      // Clean up LaTeX commands
-      sectionContent = sectionContent
-        .replace(/\\textbf\{([^}]+)\}/g, '$1')
-        .replace(/\\textit\{([^}]+)\}/g, '$1')
-        .replace(/\\emph\{([^}]+)\}/g, '$1')
-        .replace(/\\text\{([^}]+)\}/g, '$1')
-        .replace(/\\par/g, '\n')
-        .replace(/\\item\s*/g, '• ')
-        .replace(/\\begin\{itemize\}[\s\S]*?\\end\{itemize\}/g, (m) => {
-          return m.replace(/\\begin\{itemize\}|\{|\}|\\end\{itemize\}/g, '')
-            .replace(/\\item\s*/g, '• ')
-            .trim();
-        })
-        .replace(/\{|\}/g, '')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-      
-      sections.push({
-        id: `section-${sectionIndex++}`,
-        name: sectionName,
-        content: sectionContent
-      });
-    }
-    
-    return sections;
-  };
 
   // Parse LaTeX content and extract structured data
   const parseLatexToContent = (latex: string): ResumeContent => {
@@ -324,27 +261,19 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
         
         setLatexContent(loadedLatex);
         
-        // Parse LaTeX sections dynamically
+        // Parse LaTeX content and populate form fields
         if (loadedLatex) {
-          const parsedSections = parseLatexSections(loadedLatex);
-          if (parsedSections.length > 0) {
-            setSections(parsedSections);
-          }
-          
-          // If content is empty/minimal, parse LaTeX to fill content
-          if (!loadedContent.name && !loadedContent.email && !loadedContent.summary) {
-            const parsedContent = parseLatexToContent(loadedLatex);
-            // Merge parsed content with existing content (parsed takes precedence for empty fields)
-            loadedContent = {
-              name: parsedContent.name || loadedContent.name || '',
-              email: parsedContent.email || loadedContent.email || '',
-              phone: parsedContent.phone || loadedContent.phone || '',
-              summary: parsedContent.summary || loadedContent.summary || '',
-              experience: parsedContent.experience?.length ? parsedContent.experience : loadedContent.experience || [],
-              skills: parsedContent.skills?.length ? parsedContent.skills : loadedContent.skills || [],
-              education: parsedContent.education?.degree ? parsedContent.education : loadedContent.education || { degree: '', university: '', year: '' }
-            };
-          }
+          const parsedContent = parseLatexToContent(loadedLatex);
+          // Merge parsed content with existing content (parsed takes precedence for empty fields, otherwise merge)
+          loadedContent = {
+            name: parsedContent.name || loadedContent.name || '',
+            email: parsedContent.email || loadedContent.email || '',
+            phone: parsedContent.phone || loadedContent.phone || '',
+            summary: parsedContent.summary || loadedContent.summary || '',
+            experience: parsedContent.experience?.length ? parsedContent.experience : loadedContent.experience || [],
+            skills: parsedContent.skills?.length ? parsedContent.skills : loadedContent.skills || [],
+            education: parsedContent.education?.degree ? parsedContent.education : loadedContent.education || { degree: '', university: '', year: '' }
+          };
         }
         
         setContent(loadedContent);
@@ -359,42 +288,6 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
     loadResume();
   }, [resumeId]);
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    
-    if (over && active.id !== over.id) {
-      setSections((items) => {
-        const oldIndex = items.findIndex(item => item.id === active.id);
-        const newIndex = items.findIndex(item => item.id === over.id);
-        return arrayMove(items, oldIndex, newIndex);
-      });
-    }
-  };
-
-  const handleRenameSection = (sectionId: string, newName: string) => {
-    setSections(prev => prev.map(section => 
-      section.id === sectionId ? { ...section, name: newName } : section
-    ));
-    setEditingSectionId(null);
-    setEditingSectionName('');
-  };
-
-  const startEditingSection = (sectionId: string, currentName: string) => {
-    setEditingSectionId(sectionId);
-    setEditingSectionName(currentName);
-  };
-
-  const updateSectionContent = useCallback((sectionId: string, newContent: string) => {
-    setSections(prev => {
-      // Create a new array with updated section
-      return prev.map(section => {
-        if (section.id === sectionId) {
-          return { ...section, content: newContent };
-        }
-        return section;
-      });
-    });
-  }, []);
 
   const handleParseLatex = () => {
     if (!latexContent) {
@@ -402,26 +295,19 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
       return;
     }
     
-    // Parse sections from LaTeX
-    const parsedSections = parseLatexSections(latexContent);
-    if (parsedSections.length > 0) {
-      setSections(parsedSections);
-      setViewMode('form');
-      alert(`Parsed ${parsedSections.length} sections from LaTeX!`);
-    } else {
-      // Fallback to old parsing method
-      const parsed = parseLatexToContent(latexContent);
-      setContent(prev => ({
-        name: parsed.name || prev.name || '',
-        email: parsed.email || prev.email || '',
-        phone: parsed.phone || prev.phone || '',
-        summary: parsed.summary || prev.summary || '',
-        experience: parsed.experience?.length ? parsed.experience : prev.experience || [],
-        skills: parsed.skills?.length ? parsed.skills : prev.skills || [],
-        education: parsed.education?.degree ? parsed.education : prev.education || { degree: '', university: '', year: '' }
-      }));
-      alert('LaTeX content parsed and form fields updated!');
-    }
+    // Parse LaTeX content and populate form fields
+    const parsed = parseLatexToContent(latexContent);
+    setContent(prev => ({
+      name: parsed.name || prev.name || '',
+      email: parsed.email || prev.email || '',
+      phone: parsed.phone || prev.phone || '',
+      summary: parsed.summary || prev.summary || '',
+      experience: parsed.experience?.length ? parsed.experience : prev.experience || [],
+      skills: parsed.skills?.length ? parsed.skills : prev.skills || [],
+      education: parsed.education?.degree ? parsed.education : prev.education || { degree: '', university: '', year: '' }
+    }));
+    setViewMode('form');
+    alert('LaTeX content parsed and form fields updated!');
   };
 
   const handleSave = async () => {
@@ -533,82 +419,6 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
     return null;
   }
 
-  // Section Textarea Component - isolated to prevent drag interference
-  function SectionTextarea({ sectionId, content, onUpdate }: { sectionId: string; content: string; onUpdate: (id: string, value: string) => void }) {
-    const [localValue, setLocalValue] = useState(content);
-    const isInternalUpdate = useRef(false);
-    
-    useEffect(() => {
-      // Only update if the change came from outside (not from our own onChange)
-      if (!isInternalUpdate.current) {
-        setLocalValue(content);
-      }
-      isInternalUpdate.current = false;
-    }, [content]);
-    
-    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const value = e.target.value;
-      isInternalUpdate.current = true;
-      setLocalValue(value);
-      onUpdate(sectionId, value);
-    };
-    
-    return (
-      <textarea
-        value={localValue}
-        onChange={handleChange}
-        className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm resize-y min-h-[200px] font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
-        placeholder="Section content..."
-      />
-    );
-  }
-
-  // Sortable Section Component
-  function SortableSection({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
-    const {
-      attributes,
-      listeners,
-      setNodeRef,
-      transform,
-      transition,
-      isDragging,
-    } = useSortable({ 
-      id,
-      disabled: false,
-    });
-
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition,
-      opacity: isDragging ? 0.5 : 1,
-    };
-
-    return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        className="bg-gray-900 rounded-lg border border-gray-700 p-4 flex flex-col"
-      >
-        <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
-          <div className="flex items-center gap-2 flex-1">
-            <div
-              {...attributes}
-              {...listeners}
-              className="cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300 touch-none select-none"
-            >
-              <GripVertical size={16} />
-            </div>
-            <h4 className="text-sm font-semibold text-purple-400 uppercase tracking-wider">
-              {title}
-            </h4>
-          </div>
-        </div>
-        <div className="flex-1">
-          {children}
-        </div>
-      </div>
-    );
-  }
 
 
   return (
@@ -709,9 +519,64 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
             <div className="flex-1 overflow-y-auto min-h-0 space-y-6">
               {/* Summary Section */}
               <div className="bg-gray-900 rounded-lg border border-gray-700 p-4">
-                <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider mb-3">
-                  Summary
-                </label>
+                <div className="flex items-center justify-between mb-3">
+                  {editingSection === 'summary' ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="text"
+                        value={editingSectionName}
+                        onChange={(e) => setEditingSectionName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setSectionNames(prev => ({ ...prev, summary: editingSectionName }));
+                            setEditingSection(null);
+                            setEditingSectionName('');
+                          } else if (e.key === 'Escape') {
+                            setEditingSection(null);
+                            setEditingSectionName('');
+                          }
+                        }}
+                        className="flex-1 px-3 py-1 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm font-semibold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => {
+                          setSectionNames(prev => ({ ...prev, summary: editingSectionName }));
+                          setEditingSection(null);
+                          setEditingSectionName('');
+                        }}
+                        className="p-1 text-green-400 hover:text-green-300"
+                      >
+                        <Save size={14} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingSection(null);
+                          setEditingSectionName('');
+                        }}
+                        className="p-1 text-gray-400 hover:text-gray-300"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider">
+                        {sectionNames.summary}
+                      </label>
+                      <button
+                        onClick={() => {
+                          setEditingSection('summary');
+                          setEditingSectionName(sectionNames.summary);
+                        }}
+                        className="p-1 text-gray-400 hover:text-gray-300"
+                        title="Rename section"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
                 <textarea
                   value={content.summary || ''}
                   onChange={(e) => setContent(prev => ({ ...prev, summary: e.target.value }))}
@@ -723,16 +588,71 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
               {/* Experience Section */}
               <div className="bg-gray-900 rounded-lg border border-gray-700 p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider">
-                    Experience
-                  </label>
-                  <button
-                    onClick={addExperience}
-                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center gap-2"
-                  >
-                    <Plus size={14} />
-                    Add Experience
-                  </button>
+                  {editingSection === 'experience' ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="text"
+                        value={editingSectionName}
+                        onChange={(e) => setEditingSectionName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setSectionNames(prev => ({ ...prev, experience: editingSectionName }));
+                            setEditingSection(null);
+                            setEditingSectionName('');
+                          } else if (e.key === 'Escape') {
+                            setEditingSection(null);
+                            setEditingSectionName('');
+                          }
+                        }}
+                        className="flex-1 px-3 py-1 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm font-semibold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => {
+                          setSectionNames(prev => ({ ...prev, experience: editingSectionName }));
+                          setEditingSection(null);
+                          setEditingSectionName('');
+                        }}
+                        className="p-1 text-green-400 hover:text-green-300"
+                      >
+                        <Save size={14} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingSection(null);
+                          setEditingSectionName('');
+                        }}
+                        className="p-1 text-gray-400 hover:text-gray-300"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider">
+                        {sectionNames.experience}
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingSection('experience');
+                            setEditingSectionName(sectionNames.experience);
+                          }}
+                          className="p-1 text-gray-400 hover:text-gray-300"
+                          title="Rename section"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={addExperience}
+                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center gap-2"
+                        >
+                          <Plus size={14} />
+                          Add Experience
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="space-y-4">
                   {(content.experience || []).map((exp, index) => (
@@ -819,16 +739,71 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
               {/* Skills Section */}
               <div className="bg-gray-900 rounded-lg border border-gray-700 p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider">
-                    Skills
-                  </label>
-                  <button
-                    onClick={addSkill}
-                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center gap-2"
-                  >
-                    <Plus size={14} />
-                    Add Skill
-                  </button>
+                  {editingSection === 'skills' ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="text"
+                        value={editingSectionName}
+                        onChange={(e) => setEditingSectionName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setSectionNames(prev => ({ ...prev, skills: editingSectionName }));
+                            setEditingSection(null);
+                            setEditingSectionName('');
+                          } else if (e.key === 'Escape') {
+                            setEditingSection(null);
+                            setEditingSectionName('');
+                          }
+                        }}
+                        className="flex-1 px-3 py-1 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm font-semibold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => {
+                          setSectionNames(prev => ({ ...prev, skills: editingSectionName }));
+                          setEditingSection(null);
+                          setEditingSectionName('');
+                        }}
+                        className="p-1 text-green-400 hover:text-green-300"
+                      >
+                        <Save size={14} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingSection(null);
+                          setEditingSectionName('');
+                        }}
+                        className="p-1 text-gray-400 hover:text-gray-300"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider">
+                        {sectionNames.skills}
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingSection('skills');
+                            setEditingSectionName(sectionNames.skills);
+                          }}
+                          className="p-1 text-gray-400 hover:text-gray-300"
+                          title="Rename section"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={addSkill}
+                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center gap-2"
+                        >
+                          <Plus size={14} />
+                          Add Skill
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="space-y-2">
                   {(content.skills || []).map((skill, index) => (
@@ -856,9 +831,64 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
 
               {/* Education Section */}
               <div className="bg-gray-900 rounded-lg border border-gray-700 p-4">
-                <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider mb-3">
-                  Education
-                </label>
+                <div className="flex items-center justify-between mb-3">
+                  {editingSection === 'education' ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="text"
+                        value={editingSectionName}
+                        onChange={(e) => setEditingSectionName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setSectionNames(prev => ({ ...prev, education: editingSectionName }));
+                            setEditingSection(null);
+                            setEditingSectionName('');
+                          } else if (e.key === 'Escape') {
+                            setEditingSection(null);
+                            setEditingSectionName('');
+                          }
+                        }}
+                        className="flex-1 px-3 py-1 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm font-semibold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => {
+                          setSectionNames(prev => ({ ...prev, education: editingSectionName }));
+                          setEditingSection(null);
+                          setEditingSectionName('');
+                        }}
+                        className="p-1 text-green-400 hover:text-green-300"
+                      >
+                        <Save size={14} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingSection(null);
+                          setEditingSectionName('');
+                        }}
+                        className="p-1 text-gray-400 hover:text-gray-300"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider">
+                        {sectionNames.education}
+                      </label>
+                      <button
+                        onClick={() => {
+                          setEditingSection('education');
+                          setEditingSectionName(sectionNames.education);
+                        }}
+                        className="p-1 text-gray-400 hover:text-gray-300"
+                        title="Rename section"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-400 mb-1">Degree</label>
@@ -867,7 +897,11 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
                       value={content.education?.degree || ''}
                       onChange={(e) => setContent(prev => ({
                         ...prev,
-                        education: { ...prev.education, degree: e.target.value }
+                        education: { 
+                          degree: e.target.value,
+                          university: prev.education?.university || '',
+                          year: prev.education?.year || ''
+                        }
                       }))}
                       className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                       placeholder="Bachelor of Science"
@@ -880,7 +914,11 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
                       value={content.education?.university || ''}
                       onChange={(e) => setContent(prev => ({
                         ...prev,
-                        education: { ...prev.education, university: e.target.value }
+                        education: { 
+                          degree: prev.education?.degree || '',
+                          university: e.target.value,
+                          year: prev.education?.year || ''
+                        }
                       }))}
                       className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                       placeholder="University Name"
@@ -893,7 +931,11 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
                       value={content.education?.year || ''}
                       onChange={(e) => setContent(prev => ({
                         ...prev,
-                        education: { ...prev.education, year: e.target.value }
+                        education: { 
+                          degree: prev.education?.degree || '',
+                          university: prev.education?.university || '',
+                          year: e.target.value
+                        }
                       }))}
                       className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                       placeholder="2020"
@@ -902,91 +944,6 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
                 </div>
               </div>
 
-              {/* Dynamic LaTeX Sections (if any) */}
-              {sections.length > 0 && (
-                <div className="bg-gray-900 rounded-lg border border-gray-700 p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider">
-                      Additional Sections (from LaTeX)
-                    </label>
-                  </div>
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <SortableContext items={sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {sections.map((section) => (
-                          <SortableSection key={section.id} id={section.id} title={section.name}>
-                            <div className="space-y-2">
-                              {/* Editable Section Name */}
-                              <div className="flex items-center gap-2">
-                                {editingSectionId === section.id ? (
-                                  <div className="flex items-center gap-2 flex-1">
-                                    <input
-                                      type="text"
-                                      value={editingSectionName}
-                                      onChange={(e) => setEditingSectionName(e.target.value)}
-                                      onKeyDown={(e) => {
-                                        e.stopPropagation();
-                                        if (e.key === 'Enter') {
-                                          handleRenameSection(section.id, editingSectionName);
-                                        } else if (e.key === 'Escape') {
-                                          setEditingSectionId(null);
-                                          setEditingSectionName('');
-                                        }
-                                      }}
-                                      onMouseDown={(e) => e.stopPropagation()}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="flex-1 px-2 py-1 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                      autoFocus
-                                    />
-                                    <button
-                                      onClick={() => handleRenameSection(section.id, editingSectionName)}
-                                      className="p-1 text-green-400 hover:text-green-300"
-                                    >
-                                      <Save size={14} />
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setEditingSectionId(null);
-                                        setEditingSectionName('');
-                                      }}
-                                      className="p-1 text-gray-400 hover:text-gray-300"
-                                    >
-                                      <X size={14} />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <h5 className="text-xs font-semibold text-purple-300 flex-1">
-                                      {section.name}
-                                    </h5>
-                                    <button
-                                      onClick={() => startEditingSection(section.id, section.name)}
-                                      className="p-1 text-gray-400 hover:text-gray-300"
-                                      title="Rename section"
-                                    >
-                                      <Edit2 size={14} />
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                              {/* Section Content */}
-                              <SectionTextarea
-                                sectionId={section.id}
-                                content={section.content || ''}
-                                onUpdate={updateSectionContent}
-                              />
-                            </div>
-                          </SortableSection>
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
-                </div>
-              )}
             </div>
           )}
         </div>
