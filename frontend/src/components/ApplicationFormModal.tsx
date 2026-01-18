@@ -149,6 +149,7 @@ function ApplicationFormModal({ onClose, onSuccess }: ApplicationFormModalProps)
                 <option value="Interview">Interview</option>
                 <option value="Offer">Offer</option>
                 <option value="Rejected">Rejected</option>
+                <option value="Ghosted">Ghosted</option>
               </select>
             </div>
 
