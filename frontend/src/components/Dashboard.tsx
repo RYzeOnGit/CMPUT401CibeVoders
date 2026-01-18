@@ -5,7 +5,6 @@ import ApplicationsTable from './ApplicationsTable';
 import KanbanBoard from './KanbanBoard';
 import AutofillModal from './AutofillModal';
 import ApplicationFormModal from './ApplicationFormModal';
-import CommunicationsPanel from './CommunicationsPanel';
 import { useApplicationStore } from '../store/applicationStore';
 import { Plus, Table2, LayoutGrid, Bell, FileText, Sparkles, BarChart3 } from 'lucide-react';
 import type { Application } from '../types';
@@ -20,7 +19,6 @@ function Dashboard({ viewMode }: DashboardProps) {
   const navigate = useNavigate();
   const [showAutofillModal, setShowAutofillModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
-  const [selectedApplicationForComm, setSelectedApplicationForComm] = useState<Application | null>(null);
   const { applications, isLoading, error } = useApplicationStore();
 
   const handleViewModeChange = (mode: ViewMode) => {
@@ -49,6 +47,14 @@ function Dashboard({ viewMode }: DashboardProps) {
             <div className="flex items-center gap-2 md:gap-3">
               {/* Mobile: Icon buttons only */}
               <div className="flex items-center gap-1 md:hidden">
+                {/* Response Tracking Button - Mobile: Click to open response tracking statistics page */}
+                <button
+                  onClick={() => navigate('/response-tracking')}
+                  className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded-lg transition-colors"
+                  title="Response Tracking"
+                >
+                  <BarChart3 size={18} />
+                </button>
                 <button
                   onClick={() => navigate('/reminders')}
                   className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded-lg transition-colors relative"
@@ -109,6 +115,15 @@ function Dashboard({ viewMode }: DashboardProps) {
                 >
                   <FileText size={16} />
                   <span className="hidden lg:inline">Resumes</span>
+                </button>
+                {/* Response Tracking Button - Desktop: Click to open response tracking statistics page */}
+                <button
+                  onClick={() => navigate('/response-tracking')}
+                  className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white px-3 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors text-sm"
+                  title="Response Tracking"
+                >
+                  <BarChart3 size={16} />
+                  <span className="hidden lg:inline">Response Tracking</span>
                 </button>
                 <button
                   onClick={() => navigate('/ai-chat')}
@@ -197,12 +212,10 @@ function Dashboard({ viewMode }: DashboardProps) {
             {viewMode === 'table' ? (
               <ApplicationsTable 
                 applications={applications} 
-                onOpenCommunications={(app) => setSelectedApplicationForComm(app)}
               />
             ) : (
               <KanbanBoard 
                 applications={applications}
-                onOpenCommunications={(app) => setSelectedApplicationForComm(app)}
               />
             )}
           </>
@@ -228,14 +241,6 @@ function Dashboard({ viewMode }: DashboardProps) {
             setShowFormModal(false);
             useApplicationStore.getState().fetchApplications();
           }}
-        />
-      )}
-
-      {/* Communications Panel */}
-      {selectedApplicationForComm && (
-        <CommunicationsPanel
-          application={selectedApplicationForComm}
-          onClose={() => setSelectedApplicationForComm(null)}
         />
       )}
     </div>

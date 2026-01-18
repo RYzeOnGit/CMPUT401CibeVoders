@@ -53,19 +53,51 @@ export interface Resume {
   content: ResumeContent;
   version_history: ResumeVersion[];
   file_type?: string;  // MIME type of uploaded file (application/pdf, etc.)
+  latex_content?: string;  // LaTeX representation of the resume
   created_at: string;
   updated_at: string;
   derived_resumes?: Resume[];
+}
+
+export type SectionType = 'text' | 'bullet-points' | 'list' | 'education';
+
+export type BulletPointType = 'work-experience' | 'projects' | 'generic';
+
+export interface GenericSection {
+  id: string; // Unique identifier for the section
+  type: SectionType;
+  name: string; // User-defined name (e.g., "Work Experience", "Projects", "Summary")
+  data: SectionData;
+  bulletPointType?: BulletPointType; // Only used when type is 'bullet-points'
+}
+
+export type SectionData = 
+  | { type: 'text'; content: string }
+  | { type: 'bullet-points'; items: BulletPointItem[] }
+  | { type: 'list'; items: string[] }
+  | { type: 'education'; degree: string; university: string; year: string; description?: string };
+
+export interface BulletPointItem {
+  company?: string;
+  role?: string;
+  duration?: string;
+  description?: string;
 }
 
 export interface ResumeContent {
   name?: string;
   email?: string;
   phone?: string;
+  // Legacy fields for backward compatibility
   summary?: string;
   experience?: Experience[];
   skills?: string[];
   education?: Education;
+  // New generic sections system
+  sections?: GenericSection[];
+  // Section preferences
+  activeSections?: string[]; // Array of section IDs that should be displayed
+  sectionOrder?: string[]; // Order in which sections should be displayed (by ID)
 }
 
 export interface Experience {
@@ -172,3 +204,27 @@ export interface ChatSessionUpdate {
   messages?: ChatMessage[];
 }
 
+// Response Tracking types
+export interface ResponseTrackingSummary {
+  application_id: number;
+  company_name: string;
+  role_title: string;
+  total_responses: number;
+  interview_invites: number;
+  rejections: number;
+  offers: number;
+  latest_response_date?: string;
+  latest_response_type?: string;
+  status: ApplicationStatus;
+}
+
+export interface GlobalResponseStatistics {
+  total_applications: number;
+  total_communications: number;
+  total_interview_invites: number;
+  total_rejections: number;
+  total_offers: number;
+  response_rate: number; // Percentage
+  interview_rate: number; // Percentage
+  offer_rate: number; // Percentage
+}

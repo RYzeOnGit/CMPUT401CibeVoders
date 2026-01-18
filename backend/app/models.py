@@ -39,6 +39,7 @@ class Resume(ResumesBase):
     version_history = Column(JSON, default=list)  # Lightweight version history
     file_data = Column(LargeBinary, nullable=True)  # Store original PDF/DOCX file
     file_type = Column(String, nullable=True)  # Store file MIME type (application/pdf, etc.)
+    latex_content = Column(Text, nullable=True)  # Store LaTeX representation of the resume
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -52,8 +53,11 @@ class Communication(ApplicationsBase):
 
     id = Column(Integer, primary_key=True, index=True)
     application_id = Column(Integer, ForeignKey("applications.id"), nullable=False)
-    type = Column(String, nullable=False)  # Interview Invite | Rejection | Offer | Note
+    type = Column(String, nullable=False)  # Interview Invite | Rejection | Offer | Note | Follow-up
     message = Column(Text)
+    sender_name = Column(String)  # Name of the person/company who sent the response
+    sender_email = Column(String)  # Email of the sender (if available)
+    response_date = Column(DateTime)  # Date when the response was received
     timestamp = Column(DateTime, default=func.now(), nullable=False)
     created_at = Column(DateTime, default=func.now())
 

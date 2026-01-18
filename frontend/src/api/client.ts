@@ -16,6 +16,8 @@ import type {
   ReminderCreate,
   ReminderUpdate,
   AutofillParseRequest,
+  ResponseTrackingSummary,
+  GlobalResponseStatistics,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -107,6 +109,22 @@ export const resumesApi = {
   getFileUrl: (id: number): string => {
     return `${API_BASE_URL}/api/resumes/${id}/file`;
   },
+
+  updateFile: async (id: number, latexContent: string): Promise<{ message: string; file_type: string }> => {
+    const formData = new FormData();
+    formData.append('latex_content', latexContent);
+
+    const response = await api.patch<{ message: string; file_type: string }>(
+      `/api/resumes/${id}/file`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data;
+  },
 };
 
 // Communications API
@@ -119,6 +137,22 @@ export const communicationsApi = {
 
   create: async (data: CommunicationCreate): Promise<Communication> => {
     const response = await api.post<Communication>('/api/communications', data);
+    return response.data;
+  },
+
+  // Response Tracking API - Get response tracking statistics summary
+  // Usage: const summaries = await communicationsApi.getTrackingSummary();
+  // Or get statistics for a specific application: const summary = await communicationsApi.getTrackingSummary(applicationId);
+  getTrackingSummary: async (applicationId?: number): Promise<ResponseTrackingSummary[]> => {
+    const params = applicationId ? { application_id: applicationId } : {};
+    const response = await api.get<ResponseTrackingSummary[]>('/api/communications/tracking/summary', { params });
+    return response.data;
+  },
+
+  // Get global response statistics
+  // Usage: const stats = await communicationsApi.getGlobalStatistics();
+  getGlobalStatistics: async (): Promise<GlobalResponseStatistics> => {
+    const response = await api.get<GlobalResponseStatistics>('/api/communications/tracking/statistics');
     return response.data;
   },
 };
