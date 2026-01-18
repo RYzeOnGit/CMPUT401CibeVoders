@@ -51,8 +51,8 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
   const [activeId, setActiveId] = useState<string | null>(null);
   
   const availableSectionTypes: { type: SectionType; label: string; defaultName: string }[] = [
-    { type: 'text', label: 'Text Section', defaultName: 'Summary' },
-    { type: 'bullet-points', label: 'Bullet Points', defaultName: 'Experience' },
+    { type: 'text', label: 'Summary/Text', defaultName: 'Summary' },
+    { type: 'bullet-points', label: 'Experience', defaultName: 'Experience' },
     { type: 'list', label: 'List', defaultName: 'Skills' },
     { type: 'education', label: 'Education', defaultName: 'Education' }
   ];
@@ -125,7 +125,9 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
               case 'text':
                 return section.data.content.trim().length > 0;
               case 'bullet-points':
-                return section.data.items.length > 0;
+                return section.data.items.length > 0 && section.data.items.some(item => 
+                  item.company?.trim() || item.role?.trim() || item.duration?.trim() || item.description?.trim()
+                );
               case 'list':
                 return section.data.items.length > 0 && section.data.items.some(item => item.trim().length > 0);
               case 'education':
@@ -206,18 +208,43 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
   const handleSave = async () => {
     if (!resume) return;
 
+    // Validate required contact information
+    const missingFields: string[] = [];
+    if (!content.name?.trim()) missingFields.push('Full Name');
+    if (!content.email?.trim()) missingFields.push('Email');
+    if (!content.phone?.trim()) missingFields.push('Phone');
+
+    if (missingFields.length > 0) {
+      alert(`Please fill in the following required fields in Contact Information:\n\n• ${missingFields.join('\n• ')}`);
+      return;
+    }
+
     setSaving(true);
     try {
+      // Filter out empty sections before saving
+      const sectionsToSave = sections.filter(section => {
+        switch (section.data.type) {
+          case 'text':
+            return section.data.content.trim().length > 0;
+          case 'bullet-points':
+            return section.data.items.length > 0 && section.data.items.some(item => 
+              item.company?.trim() || item.role?.trim() || item.duration?.trim() || item.description?.trim()
+            );
+          case 'list':
+            return section.data.items.length > 0 && section.data.items.some(item => item.trim().length > 0);
+          case 'education':
+            return section.data.degree.trim().length > 0;
+          default:
+            return true;
+        }
+      });
+
       // Save content with sections
       const contentToSave: ResumeContent = {
         ...content,
-        sections: sections,
-        sectionOrder: sectionOrder,
+        sections: sectionsToSave,
+        sectionOrder: sectionOrder.filter(id => sectionsToSave.some(s => s.id === id)),
       };
-      console.log('Saving content with sections:', {
-        sectionsCount: sections.length,
-        sectionOrder: sectionOrder,
-      });
       await resumesApi.update(resumeId, { content: contentToSave });
       onSuccess();
       onClose();
@@ -254,8 +281,31 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
   };
 
   const removeSection = (sectionId: string) => {
-    setSections(prev => prev.filter(s => s.id !== sectionId));
-    setSectionOrder(prev => prev.filter(id => id !== sectionId));
+    // First clear the section's content
+    setSections(prev => prev.map(s => {
+      if (s.id === sectionId) {
+        // Clear the section's data based on type
+        switch (s.data.type) {
+          case 'text':
+            return { ...s, data: { type: 'text', content: '' } };
+          case 'bullet-points':
+            return { ...s, data: { type: 'bullet-points', items: [] } };
+          case 'list':
+            return { ...s, data: { type: 'list', items: [] } };
+          case 'education':
+            return { ...s, data: { type: 'education', degree: '', university: '', year: '' } };
+          default:
+            return s;
+        }
+      }
+      return s;
+    }));
+    
+    // Then remove the section from the array
+    setTimeout(() => {
+      setSections(prev => prev.filter(s => s.id !== sectionId));
+      setSectionOrder(prev => prev.filter(id => id !== sectionId));
+    }, 0);
   };
 
   const updateSection = (updatedSection: GenericSection) => {
@@ -525,7 +575,7 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
                       <div className="relative group">
                         <button
                           onClick={() => removeSection(section.id)}
-                          className="absolute -top-2 -left-2 z-10 p-1.5 bg-red-600 hover:bg-red-700 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute top-2 left-2 z-10 p-1.5 bg-red-600 hover:bg-red-700 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                           title="Remove section"
                         >
                           <X size={12} />

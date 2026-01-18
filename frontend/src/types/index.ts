@@ -81,7 +81,7 @@ export interface BulletPointItem {
   company?: string;
   role?: string;
   duration?: string;
-  bullet_points: string[];
+  description?: string;
 }
 
 export interface ResumeContent {

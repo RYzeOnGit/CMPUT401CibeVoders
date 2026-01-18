@@ -31,5 +31,5 @@ export const BULLET_POINT_PLACEHOLDERS: Record<BulletPointType, BulletPointPlace
 export const BULLET_POINT_TYPE_LABELS: Record<BulletPointType, string> = {
   'work-experience': 'Work Experience',
   'projects': 'Projects',
-  'generic': 'Generic Bullet Points'
+  'generic': 'Generic Experience'
 };

@@ -35,7 +35,7 @@ export function migrateToGenericSections(content: ResumeContent): GenericSection
             company: exp.company,
             role: exp.role,
             duration: exp.duration,
-            bullet_points: exp.bullet_points || []
+            description: exp.bullet_points ? exp.bullet_points.join('\n') : ''
           }))
         }
       });
@@ -100,7 +100,7 @@ export function createEmptySection(type: SectionType, name: string, bulletPointT
         type: 'bullet-points',
         name,
         bulletPointType: bulletPointType || 'generic',
-        data: { type: 'bullet-points', items: [] }
+        data: { type: 'bullet-points', items: [{ description: '' }] }
       };
     case 'list':
       return {
