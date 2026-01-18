@@ -2,14 +2,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, BarChart3, Filter, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react';
 import { useApplicationStore } from '../store/applicationStore';
-import type { Application } from '../types';
 import SankeyDiagram from '../components/SankeyDiagram';
 
 export default function AnalyticsPage() {
   const navigate = useNavigate();
   const { applications, fetchApplications } = useApplicationStore();
   const [dateRange, setDateRange] = useState<'all' | '30' | '90' | '180'>('all');
-  const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
 
   useEffect(() => {
     fetchApplications();
@@ -64,11 +62,9 @@ export default function AnalyticsPage() {
     const links: Array<{ source: string; target: string; value: number }> = [];
 
     // Count transitions
-    const appliedCount = filteredApplications.length;
     const interviewCount = filteredApplications.filter(
       (app) => app.status === 'Interview' || app.status === 'Offer' || app.status === 'Rejected'
     ).length;
-    const offerCount = filteredApplications.filter((app) => app.status === 'Offer').length;
     const rejectedCount = filteredApplications.filter((app) => app.status === 'Rejected').length;
     const interviewToOffer = filteredApplications.filter(
       (app) => app.status === 'Offer'
@@ -200,7 +196,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Sankey Diagram */}
-        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6 mb-8">
+        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-gray-100 mb-1">Application Pipeline Flow</h2>
             <p className="text-sm text-gray-400">
@@ -216,45 +212,12 @@ export default function AnalyticsPage() {
               </div>
             </div>
           ) : (
-            <SankeyDiagram data={sankeyData} />
+            <div className="w-full overflow-x-auto">
+              <SankeyDiagram data={sankeyData} />
+            </div>
           )}
         </div>
 
-        {/* Status Breakdown */}
-        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
-          <h2 className="text-lg font-semibold text-gray-100 mb-4">Status Breakdown</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {['Applied', 'Interview', 'Offer', 'Rejected'].map((status) => {
-              const count = stats.byStatus[status] || 0;
-              const percentage = stats.total > 0 ? ((count / stats.total) * 100).toFixed(1) : '0';
-              const colors: Record<string, string> = {
-                Applied: 'bg-blue-500',
-                Interview: 'bg-yellow-500',
-                Offer: 'bg-green-500',
-                Rejected: 'bg-red-500',
-              };
-
-              return (
-                <div
-                  key={status}
-                  onClick={() => setSelectedStatus(selectedStatus === status ? null : status)}
-                  className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                    selectedStatus === status
-                      ? 'border-purple-500 bg-purple-500/10'
-                      : 'border-gray-700 bg-gray-700/30 hover:bg-gray-700/50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-300">{status}</span>
-                    <div className={`w-3 h-3 rounded-full ${colors[status]}`} />
-                  </div>
-                  <p className="text-2xl font-bold text-gray-100">{count}</p>
-                  <p className="text-xs text-gray-400 mt-1">{percentage}%</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
       </main>
     </div>
   );
