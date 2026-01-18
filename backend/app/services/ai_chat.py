@@ -22,86 +22,44 @@ def get_openai_client():
     return _client
 
 
-async def extract_resume_text_from_pdf(resume: Resume) -> str:
-    """Extract resume text from PDF using a simple text extractor, then clean with LLM."""
-    if not resume.file_data or not resume.file_type or 'pdf' not in resume.file_type:
-        return "No PDF file available for this resume."
+async def extract_resume_text_from_tex(resume: Resume) -> str:
+    """Extract resume text from LaTeX content."""
+    # Use latex_content field (preferred) or try to decode file_data if it's text
+    tex_content = None
+    
+    # First, try latex_content field (stores LaTeX as text)
+    if resume.latex_content:
+        tex_content = resume.latex_content
+    # Fallback: if file_data exists and is small, might be LaTeX text (not PDF)
+    elif resume.file_data and len(resume.file_data) < 500000:  # PDFs are usually larger
+        try:
+            # Try to decode as text (might be LaTeX)
+            tex_content = resume.file_data.decode('utf-8')
+            # Check if it looks like LaTeX (not PDF)
+            if not tex_content.startswith('%PDF') and ('\\documentclass' in tex_content or '\\begin{' in tex_content):
+                pass  # It's LaTeX, use it
+            else:
+                tex_content = None  # It's probably a PDF, don't use it
+        except (UnicodeDecodeError, AttributeError):
+            tex_content = None
+    
+    if not tex_content:
+        return "No LaTeX content available for this resume."
     
     try:
-        # Try to extract text using pypdf if available
-        try:
-            from pypdf import PdfReader
-            import io
-            
-            pdf_file = io.BytesIO(resume.file_data)
-            reader = PdfReader(pdf_file)
-            raw_text = ""
-            for page in reader.pages:
-                raw_text += page.extract_text() + "\n"
-            
-            if raw_text.strip():
-                # Clean and structure the extracted text using LLM
-                client = get_openai_client()
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a resume parser. Clean and structure extracted resume text. Organize it clearly with sections: Contact Info, Summary, Experience, Education, Skills, Projects, etc. Preserve ALL details including dates, company names, technologies, achievements, and metrics."
-                        },
-                        {
-                            "role": "user",
-                            "content": f"""Clean and structure this extracted resume text. Preserve all information and organize it clearly:
-
-{raw_text[:3000]}
-
-Return the complete, well-formatted resume text with all sections clearly labeled."""
-                        }
-                    ],
-                    max_tokens=2000
-                )
-                return response.choices[0].message.content
-        except ImportError:
-            # pypdf not installed, use LLM to help
-            pass
-        except Exception as e:
-            print(f"PDF extraction error: {e}")
-        
-        # Fallback: Use LLM to extract from available info
-        pdf_size_kb = len(resume.file_data) / 1024
-        client = get_openai_client()
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a resume extraction assistant. Extract all text content from resumes. Return the complete resume text in a clear, structured format."
-                },
-                {
-                    "role": "user",
-                    "content": f"""I have a PDF resume file named "{resume.name}" ({pdf_size_kb:.1f} KB).
-
-Since I cannot directly read the PDF binary, please help structure what information should be extracted. If you have any context about this resume, format it clearly with sections: Contact Info, Summary, Experience, Education, Skills, Projects, etc."""
-                }
-            ],
-            max_tokens=1500
-        )
-        
-        extracted = response.choices[0].message.content
-        
-        # If we have structured content, combine it
+        # If we have structured content, combine it with the .tex source
         if resume.content:
             structured = format_resume_content(resume.content)
             if structured and structured != "No resume content available.":
-                return f"{extracted}\n\n---\n\nStructured Content:\n{structured}"
+                return f"LaTeX Source:\n{tex_content}\n\n---\n\nStructured Content:\n{structured}"
         
-        return extracted
+        return tex_content
         
     except Exception as e:
         # Final fallback to structured content
         if resume.content:
             return format_resume_content(resume.content)
-        return f"Error processing resume: {str(e)}. Please ensure your PDF contains readable text."
+        return f"Error processing LaTeX content: {str(e)}"
 
 
 async def critique_resume(resume: Resume, user_message: str = "", conversation_history: List[Dict[str, str]] = []) -> str:
@@ -190,14 +148,14 @@ Be direct, honest, and actionable. No sugar-coating. Use the exact format above.
     if not resume:
         return "Error: No resume selected. Please select a resume first."
     
-    # Try to extract text from PDF first, fallback to structured content
-    if resume.file_data and resume.file_type and 'pdf' in resume.file_type:
-        resume_text = await extract_resume_text_from_pdf(resume)
+    # Try to extract text from .tex file first, fallback to structured content
+    if resume.file_data and resume.file_type and ('tex' in resume.file_type or resume.file_type.startswith('text/')):
+        resume_text = await extract_resume_text_from_tex(resume)
     else:
         resume_content = resume.content if resume.content else {}
         resume_text = format_resume_content(resume_content)
         if not resume_text or resume_text.strip() == "No resume content available.":
-            return "Error: This resume has no content. Please upload a PDF resume or add content to the resume."
+            return "Error: This resume has no content. Please upload a .tex resume or add content to the resume."
     
     # Build messages
     messages = [{"role": "system", "content": system_prompt}]
@@ -274,14 +232,14 @@ Be professional but probing. Start by asking if they're ready to begin."""
     if not resume:
         return "Error: No resume selected. Please select a resume first."
     
-    # Try to extract text from PDF first, fallback to structured content
-    if resume.file_data and resume.file_type and 'pdf' in resume.file_type:
-        resume_text = await extract_resume_text_from_pdf(resume)
+    # Try to extract text from .tex file first, fallback to structured content
+    if resume.file_data and resume.file_type and ('tex' in resume.file_type or resume.file_type.startswith('text/')):
+        resume_text = await extract_resume_text_from_tex(resume)
     else:
         resume_content = resume.content if resume.content else {}
         resume_text = format_resume_content(resume_content)
         if not resume_text or resume_text.strip() == "No resume content available.":
-            return "Error: This resume has no content. Please upload a PDF resume or add content to the resume."
+            return "Error: This resume has no content. Please upload a .tex resume or add content to the resume."
     
     job_context = ""
     if application:
@@ -379,14 +337,14 @@ If the candidate says they're ready, start Round 1 with a question about a speci
     if not resume:
         return "Error: No resume selected. Please select a resume first."
     
-    # Try to extract text from PDF first, fallback to structured content
-    if resume.file_data and resume.file_type and 'pdf' in resume.file_type:
-        resume_text = await extract_resume_text_from_pdf(resume)
+    # Try to extract text from .tex file first, fallback to structured content
+    if resume.file_data and resume.file_type and ('tex' in resume.file_type or resume.file_type.startswith('text/')):
+        resume_text = await extract_resume_text_from_tex(resume)
     else:
         resume_content = resume.content if resume.content else {}
         resume_text = format_resume_content(resume_content)
         if not resume_text or resume_text.strip() == "No resume content available.":
-            return "Error: This resume has no content. Please upload a PDF resume or add content to the resume."
+            return "Error: This resume has no content. Please upload a .tex resume or add content to the resume."
     
     job_context = ""
     if application:

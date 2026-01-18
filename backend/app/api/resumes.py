@@ -6,7 +6,9 @@ from datetime import datetime
 
 from app.database import get_resumes_db
 from app.models import Resume
-from app.schemas import ResumeCreate, ResumeUpdate, Resume as ResumeSchema
+from app.schemas import ResumeCreate, ResumeUpdate, Resume as ResumeSchema, TemplateApplyRequest, TemplateApplyResponse
+from app.services.pdf_to_latex import convert_pdf_to_latex, save_latex_to_resume
+from app.services.template_engine import blend_resume_with_template, generate_random_suffix, get_available_templates
 
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
 
@@ -97,6 +99,180 @@ def get_resume_file(resume_id: int, db: Session = Depends(get_resumes_db)):
     )
 
 
+@router.get("/{resume_id}/latex")
+def get_resume_latex(resume_id: int, db: Session = Depends(get_resumes_db)):
+    """Get the LaTeX content for a resume as a downloadable .tex file."""
+    resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    
+    if not resume.latex_content:
+        raise HTTPException(status_code=404, detail="No LaTeX content available for this resume")
+    
+    filename = f"{resume.name}.tex"
+    
+    return Response(
+        content=resume.latex_content,
+        media_type="application/x-tex",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@router.get("/templates/list")
+def list_templates():
+    """Get list of available templates."""
+    templates = get_available_templates()
+    return {"templates": templates}
+
+
+@router.get("/templates/{template_id}/preview")
+def get_template_preview(template_id: str):
+    """Get PDF preview for a template from static PDF file."""
+    from app.services.template_preview import get_template_preview_pdf, get_template_dir_path
+    
+    # Debug: check if directory exists
+    template_dir = get_template_dir_path(template_id)
+    if template_dir:
+        pdf_files = list(template_dir.glob("*.pdf"))
+        print(f"Debug: Looking for PDFs in {template_dir}")
+        print(f"Debug: Found PDF files: {[f.name for f in pdf_files]}")
+    
+    pdf_bytes = get_template_preview_pdf(template_id)
+    if not pdf_bytes:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Preview not available for template {template_id}. Please add {template_id}.pdf or preview.pdf to assets/resumes/resumes/{template_id}/"
+        )
+    
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{template_id}_preview.pdf"'}
+    )
+
+
+@router.post("/{resume_id}/apply-template", response_model=TemplateApplyResponse)
+def apply_template(
+    resume_id: int,
+    request: TemplateApplyRequest,
+    db: Session = Depends(get_resumes_db)
+):
+    """
+    Apply a template to an existing resume to create a visually upgraded version.
+    
+    This uses AI to intelligently blend the resume content with the chosen template,
+    preserving all details while upgrading the visual format.
+    """
+    # Get the original resume
+    original_resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not original_resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    
+    # Check if original resume has LaTeX content
+    if not original_resume.latex_content:
+        raise HTTPException(
+            status_code=400,
+            detail="Original resume does not have LaTeX content. Please upload a PDF first to generate LaTeX."
+        )
+    
+    # Validate template ID
+    available_templates = get_available_templates()
+    if request.template_id not in available_templates:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid template ID. Available templates: {list(available_templates.keys())}"
+        )
+    
+    try:
+        # Use AI to blend the resume with the template
+        blended_latex = blend_resume_with_template(
+            existing_latex=original_resume.latex_content,
+            template_id=request.template_id,
+            original_name=original_resume.name
+        )
+        
+        if not blended_latex:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to blend resume with template. Please try again."
+            )
+        
+        # Compile the blended LaTeX to PDF
+        from app.services.latex_to_pdf import compile_latex_to_pdf
+        from app.services.template_preview import get_template_dir_path
+        
+        # #region agent log
+        import json
+        log_data = {"location": "resumes.py:201", "message": "Starting PDF compilation", "data": {"template_id": request.template_id, "latex_length": len(blended_latex)}, "timestamp": int(__import__('time').time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "B"}
+        with open(r"c:\Users\anony\Desktop\Others\Studies\Confidential\Software Engineer\CMPUT401CibeVoders\.cursor\debug.log", "a") as f:
+            f.write(json.dumps(log_data) + "\n")
+        # #endregion
+        
+        template_dir = get_template_dir_path(request.template_id)
+        pdf_bytes = compile_latex_to_pdf(blended_latex, template_dir)
+        
+        # #region agent log
+        log_data = {"location": "resumes.py:207", "message": "PDF compilation result", "data": {"pdf_bytes_size": len(pdf_bytes) if pdf_bytes else 0, "compilation_success": pdf_bytes is not None}, "timestamp": int(__import__('time').time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "B"}
+        with open(r"c:\Users\anony\Desktop\Others\Studies\Confidential\Software Engineer\CMPUT401CibeVoders\.cursor\debug.log", "a") as f:
+            f.write(json.dumps(log_data) + "\n")
+        # #endregion
+        
+        if not pdf_bytes:
+            # If PDF compilation fails, still save the LaTeX (user can compile manually)
+            print(f"Warning: Failed to compile blended LaTeX to PDF for template {request.template_id}")
+            pdf_bytes = None
+        
+        # Generate a new name: original name + 3 random letters
+        random_suffix = generate_random_suffix(3)
+        new_name = f"{original_resume.name}-{random_suffix}"
+        
+        # Create a new resume record with both blended LaTeX AND PDF
+        # Copy the minimal content structure from original
+        new_resume = Resume(
+            name=new_name,
+            is_master=False,  # Don't make template-applied resumes master by default
+            master_resume_id=original_resume.id,  # Link to original
+            content=original_resume.content,  # Copy JSON content structure
+            latex_content=blended_latex,  # Store the blended LaTeX
+            file_data=pdf_bytes,  # Store the compiled PDF
+            file_type="application/pdf" if pdf_bytes else None,  # Set file type if PDF exists
+            version_history=[{
+                "timestamp": datetime.now().isoformat(),
+                "content": {
+                    "summary": f"Template applied: {request.template_id}",
+                    "original_resume_id": original_resume.id,
+                    "template_id": request.template_id
+                }
+            }]
+        )
+        
+        db.add(new_resume)
+        db.commit()
+        db.refresh(new_resume)
+        
+        # #region agent log
+        log_data = {"location": "resumes.py:238", "message": "New resume saved to DB", "data": {"new_resume_id": new_resume.id, "new_resume_name": new_resume.name, "has_file_data": new_resume.file_data is not None, "file_type": new_resume.file_type, "file_data_size": len(new_resume.file_data) if new_resume.file_data else 0}, "timestamp": int(__import__('time').time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "B"}
+        with open(r"c:\Users\anony\Desktop\Others\Studies\Confidential\Software Engineer\CMPUT401CibeVoders\.cursor\debug.log", "a") as f:
+            f.write(json.dumps(log_data) + "\n")
+        # #endregion
+        
+        return TemplateApplyResponse(
+            success=True,
+            message=f"Successfully applied template {request.template_id}" + (" and compiled to PDF" if pdf_bytes else " (PDF compilation pending)"),
+            new_resume_id=new_resume.id,
+            new_resume=new_resume
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error applying template: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to apply template: {str(e)}"
+        )
+
+
 @router.post("/upload", response_model=ResumeSchema, status_code=201)
 async def upload_resume(
     file: UploadFile = File(...),
@@ -104,8 +280,8 @@ async def upload_resume(
     is_master: bool = Form(False),
     db: Session = Depends(get_resumes_db)
 ):
-    """Upload resume file (PDF or DOCX) for inline viewing."""
-    # Validate file type
+    """Upload resume file (PDF or DOCX) for inline viewing and LaTeX conversion."""
+    # Validate file type - accept PDF and DOCX
     valid_types = [
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -153,6 +329,17 @@ async def upload_resume(
     db.add(db_resume)
     db.commit()
     db.refresh(db_resume)
+    
+    # Convert PDF to LaTeX if it's a PDF file
+    if file.content_type == "application/pdf" and file_content:
+        try:
+            latex_content = convert_pdf_to_latex(file_content)
+            if latex_content:
+                save_latex_to_resume(db_resume, latex_content, db)
+        except Exception as e:
+            # Log error but don't fail the upload
+            print(f"Failed to convert PDF to LaTeX: {e}")
+            # Continue without LaTeX conversion - upload still succeeds
     
     return db_resume
 
