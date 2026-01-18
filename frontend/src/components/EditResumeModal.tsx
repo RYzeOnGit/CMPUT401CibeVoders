@@ -18,6 +18,7 @@ import {
 import { resumesApi } from '../api/client';
 import type { Resume, ResumeContent, GenericSection, SectionType, BulletPointType } from '../types';
 import { parseLatexToContent } from '../utils/latexParser';
+import { generateLatexFromContent } from '../utils/latexGenerator';
 import { migrateToGenericSections, createEmptySection } from '../utils/sectionMigration';
 import { BULLET_POINT_TYPE_LABELS } from '../utils/bulletPointPlaceholders';
 import GenericSectionForm from './resume-sections/GenericSectionForm';
@@ -227,6 +228,37 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
     alert(`LaTeX content parsed! Found ${parsedSections.length} sections.`);
   };
 
+  const handleViewLatex = () => {
+    // Generate LaTeX from current content
+    const resumeContent: ResumeContent = {
+      name: content.name,
+      email: content.email,
+      phone: content.phone,
+      sections: sections,
+      sectionOrder: sectionOrder
+    };
+    
+    const generatedLatex = generateLatexFromContent(resumeContent);
+    setLatexContent(generatedLatex);
+    setViewMode('latex');
+    
+    // Save to localStorage
+    localStorage.setItem('latest_resume_latex', generatedLatex);
+    
+    console.log('========================================');
+    console.log('GENERATED LATEX SOURCE:');
+    console.log('========================================');
+    console.log(generatedLatex);
+    console.log('========================================');
+  };
+
+  const handleCopyLatex = () => {
+    if (latexContent) {
+      navigator.clipboard.writeText(latexContent);
+      alert('LaTeX code copied to clipboard!');
+    }
+  };
+
   const handleSave = async () => {
     if (!resume) return;
 
@@ -278,10 +310,30 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
       console.log(jsonOutput);
       console.log('========================================');
       
-      // Also save to localStorage for easy access
-      localStorage.setItem('latest_resume_json', jsonOutput);
+      // Generate and output LaTeX
+      const generatedLatex = generateLatexFromContent(contentToSave);
+      console.log('========================================');
+      console.log('GENERATED LATEX SOURCE:');
+      console.log('========================================');
+      console.log(generatedLatex);
+      console.log('========================================');
       
+      // Save both to localStorage for easy access
+      localStorage.setItem('latest_resume_json', jsonOutput);
+      localStorage.setItem('latest_resume_latex', generatedLatex);
+      
+      // Update resume content in database
       await resumesApi.update(resumeId, { content: contentToSave });
+      
+      // Update the original .tex file with generated LaTeX
+      try {
+        await resumesApi.updateFile(resumeId, generatedLatex);
+        console.log('✓ Resume file updated with new LaTeX content');
+      } catch (fileError) {
+        console.error('Warning: Failed to update resume file:', fileError);
+        // Continue even if file update fails - content is still saved
+      }
+      
       onSuccess();
       onClose();
     } catch (error) {
@@ -417,14 +469,35 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
         <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-700">
           <h3 className="text-xl font-semibold text-gray-100">Edit Resume: {resume.name}</h3>
           <div className="flex items-center gap-3">
-            {latexContent && (
+            {viewMode === 'latex' ? (
+              <>
+                <button
+                  onClick={handleCopyLatex}
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
+                  title="Copy LaTeX to clipboard"
+                >
+                  <FileText size={16} />
+                  Copy LaTeX
+                </button>
+                {latexContent && (
+                  <button
+                    onClick={handleParseLatex}
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                    title="Parse LaTeX and fill form fields"
+                  >
+                    <RefreshCw size={16} />
+                    Parse LaTeX
+                  </button>
+                )}
+              </>
+            ) : (
               <button
-                onClick={handleParseLatex}
+                onClick={handleViewLatex}
                 className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-                title="Parse LaTeX and fill form fields"
+                title="Generate LaTeX from form data"
               >
-                <RefreshCw size={16} />
-                Parse LaTeX
+                <FileText size={16} />
+                View LaTeX Source
               </button>
             )}
             <button

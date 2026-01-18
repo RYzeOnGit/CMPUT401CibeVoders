@@ -65,6 +65,38 @@ def update_resume(
     return db_resume
 
 
+@router.patch("/{resume_id}/file")
+def update_resume_file(
+    resume_id: int,
+    latex_content: str = Form(...),
+    db: Session = Depends(get_resumes_db)
+):
+    """Update the resume file with generated LaTeX content."""
+    db_resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not db_resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    # Convert LaTeX string to bytes
+    latex_bytes = latex_content.encode('utf-8')
+    
+    # Update file data and latex_content
+    db_resume.file_data = latex_bytes
+    db_resume.latex_content = latex_content
+    
+    # If original file was .tex, keep that type, otherwise set to tex
+    if db_resume.file_type and 'tex' in db_resume.file_type.lower():
+        # Keep existing tex type
+        pass
+    else:
+        # Set to tex type
+        db_resume.file_type = 'application/x-tex'
+    
+    db_resume.updated_at = datetime.now()
+    db.commit()
+    
+    return {"message": "Resume file updated successfully", "file_type": db_resume.file_type}
+
+
 @router.delete("/{resume_id}", status_code=204)
 def delete_resume(resume_id: int, db: Session = Depends(get_resumes_db)):
     """Delete a resume."""

@@ -107,6 +107,22 @@ export const resumesApi = {
   getFileUrl: (id: number): string => {
     return `${API_BASE_URL}/api/resumes/${id}/file`;
   },
+
+  updateFile: async (id: number, latexContent: string): Promise<{ message: string; file_type: string }> => {
+    const formData = new FormData();
+    formData.append('latex_content', latexContent);
+
+    const response = await api.patch<{ message: string; file_type: string }>(
+      `/api/resumes/${id}/file`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data;
+  },
 };
 
 // Communications API
