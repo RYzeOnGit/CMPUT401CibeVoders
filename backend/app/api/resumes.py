@@ -37,6 +37,99 @@ def create_resume(resume: ResumeCreate, db: Session = Depends(get_resumes_db)):
     return db_resume
 
 
+@router.patch("/{resume_id}", response_model=ResumeSchema)
+def update_resume(
+    resume_id: int,
+    resume_update: ResumeUpdate,
+    db: Session = Depends(get_resumes_db)
+):
+    """Update a resume."""
+    db_resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not db_resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    # Store version history before update
+    if db_resume.content:
+        db_resume.version_history.append({
+            "timestamp": datetime.now().isoformat(),
+            "content": db_resume.content
+        })
+
+    update_data = resume_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_resume, field, value)
+
+    db_resume.updated_at = datetime.now()
+    db.commit()
+    db.refresh(db_resume)
+    return db_resume
+
+
+@router.patch("/{resume_id}/file")
+def update_resume_file(
+    resume_id: int,
+    latex_content: str = Form(...),
+    db: Session = Depends(get_resumes_db)
+):
+    """Update the resume file with generated LaTeX content."""
+    db_resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not db_resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    # Convert LaTeX string to bytes
+    latex_bytes = latex_content.encode('utf-8')
+    
+    # Update file data and latex_content
+    db_resume.file_data = latex_bytes
+    db_resume.latex_content = latex_content
+    
+    # If original file was .tex, keep that type, otherwise set to tex
+    if db_resume.file_type and 'tex' in db_resume.file_type.lower():
+        # Keep existing tex type
+        pass
+    else:
+        # Set to tex type
+        db_resume.file_type = 'application/x-tex'
+    
+    db_resume.updated_at = datetime.now()
+    db.commit()
+    
+    return {"message": "Resume file updated successfully", "file_type": db_resume.file_type}
+
+
+@router.delete("/{resume_id}", status_code=204)
+def delete_resume(resume_id: int, db: Session = Depends(get_resumes_db)):
+    """Delete a resume."""
+    db_resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not db_resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    db.delete(db_resume)
+    db.commit()
+    return None
+
+
+@router.get("/{resume_id}/file")
+def get_resume_file(resume_id: int, db: Session = Depends(get_resumes_db)):
+    """Get the original PDF/DOCX file for a resume."""
+    resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    
+    if not resume.file_data:
+        raise HTTPException(status_code=404, detail="No file attached to this resume")
+    
+    # Determine content type and filename
+    content_type = resume.file_type or "application/pdf"
+    filename = f"{resume.name}.pdf" if "pdf" in content_type else f"{resume.name}.docx"
+    
+    return Response(
+        content=resume.file_data,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'}
+    )
+
+
 @router.post("/upload", response_model=ResumeSchema, status_code=201)
 async def upload_resume(
     file: UploadFile = File(...),
@@ -48,13 +141,17 @@ async def upload_resume(
     # Validate file type - accept PDF and DOCX
     valid_types = [
         "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/x-tex",
+        "application/x-latex",
+        "text/x-tex",
+        "text/plain"  # Some systems detect .tex as plain text
     ]
     
     if file.content_type not in valid_types:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type. Supported types: PDF, DOCX. Got: {file.content_type}"
+            detail=f"Invalid file type. Supported types: PDF, DOCX, TEX. Got: {file.content_type}"
         )
     
     # Check file size (10MB limit)

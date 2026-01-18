@@ -110,13 +110,19 @@ export const resumesApi = {
     return `${API_BASE_URL}/api/resumes/${id}/file`;
   },
 
-  setMaster: async (id: number): Promise<Resume> => {
-    const response = await api.patch<Resume>(`/api/resumes/${id}/set-master`);
-    return response.data;
-  },
+  updateFile: async (id: number, latexContent: string): Promise<{ message: string; file_type: string }> => {
+    const formData = new FormData();
+    formData.append('latex_content', latexContent);
 
-  unsetMaster: async (id: number): Promise<Resume> => {
-    const response = await api.patch<Resume>(`/api/resumes/${id}/unset-master`);
+    const response = await api.patch<{ message: string; file_type: string }>(
+      `/api/resumes/${id}/file`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
     return response.data;
   },
 };
