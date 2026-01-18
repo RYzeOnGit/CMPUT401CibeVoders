@@ -8,6 +8,14 @@ function cleanLatexText(text: string): string {
   return text
     // Remove \item
     .replace(/\\item\s+/g, '')
+    // Handle math mode: $...$ -> content
+    .replace(/\$([^$]+)\$/g, '$1')
+    // Handle escaped special characters
+    .replace(/\\&/g, '&')
+    .replace(/\\_/g, '_')
+    .replace(/\\#/g, '#')
+    .replace(/\\%/g, '%')
+    .replace(/\\\$/g, '$')
     // Extract content from formatting commands: \textbf{content} -> content
     .replace(/\\textbf\{([^}]+)\}/g, '$1')
     .replace(/\\textit\{([^}]+)\}/g, '$1')
@@ -334,12 +342,14 @@ function parseSectionContent(sectionName: string, content: string): GenericSecti
     return parseEducationSection(sectionName, content);
   }
   
-  // Check if this looks like an experience/work section (has \resumeHeading, \projectHeading, or multiple entries)
+  // Check if this looks like an experience/work section (has \resumeHeading, \resumeSubheading, \projectHeading, or multiple entries)
   const hasResumeHeading = /\\resumeHeading\{/.test(content);
+  const hasResumeSubheading = /\\resumeSubheading/.test(content);
   const hasProjectHeading = /\\projectHeading/.test(content);
+  const hasResumeProjectHeading = /\\resumeProjectHeading/.test(content);
   const hasItemize = /\\begin\{(bullets|itemize)\}/.test(content);
   
-  if (hasResumeHeading || hasProjectHeading || (hasItemize && /\\textbf\{[^}]+\}.*\\textit\{[^}]+\}/.test(content))) {
+  if (hasResumeHeading || hasResumeSubheading || hasProjectHeading || hasResumeProjectHeading || (hasItemize && /\\textbf\{[^}]+\}.*\\textit\{[^}]+\}/.test(content))) {
     // This is an experience-like section with entries
     return parseExperienceSection(sectionName, content);
   } else if (hasItemize) {
@@ -360,7 +370,9 @@ function parseExperienceSection(sectionName: string, content: string): GenericSe
   console.log(`  -> Parsing as experience section, content length: ${content.length}`);
   console.log(`  -> First 300 chars:`, content.substring(0, 300));
   console.log(`  -> Has \\resumeHeading:`, content.includes('\\resumeHeading'));
+  console.log(`  -> Has \\resumeSubheading:`, content.includes('\\resumeSubheading'));
   console.log(`  -> Has \\projectHeading:`, content.includes('\\projectHeading'));
+  console.log(`  -> Has \\resumeProjectHeading:`, content.includes('\\resumeProjectHeading'));
   console.log(`  -> Has \\textbf:`, content.includes('\\textbf'));
   
   // Try to find \resumeHeading{company}{role}{location}{duration}
@@ -376,8 +388,89 @@ function parseExperienceSection(sectionName: string, content: string): GenericSe
     console.log(`     Match ${i+1} at index ${m.index}: ${m[1]} - ${m[2]}`);
   });
   
-  // Also try \projectHeading{title}{url}{tech}
+  // Try \resumeSubheading{title}{dates}{company}{location}
   if (headingMatches.length === 0) {
+    const resumeSubheadingRegex = /\\resumeSubheading\s*\{([^}]*)\}\s*\{([^}]*)\}\s*\{([^}]*)\}\s*\{([^}]*)\}/g;
+    const subheadingMatches = Array.from(content.matchAll(resumeSubheadingRegex));
+    console.log(`  -> Found ${subheadingMatches.length} resumeSubheading entries`);
+    
+    subheadingMatches.forEach((m, i) => {
+      console.log(`     Match ${i+1} at index ${m.index}: ${m[1]} (${m[2]})`);
+    });
+    
+    for (let i = 0; i < subheadingMatches.length; i++) {
+      const match = subheadingMatches[i];
+      const title = cleanLatexText(match[1]);
+      const dates = cleanLatexText(match[2]);
+      const company = cleanLatexText(match[3]);
+      const location = cleanLatexText(match[4]);
+      
+      console.log(`  -> SubHeading Entry ${i+1}: ${title} at ${company}`);
+      
+      // Find content after this heading until next heading
+      const startIndex = match.index! + match[0].length;
+      const nextMatch = subheadingMatches[i + 1];
+      const endIndex = nextMatch ? nextMatch.index! : content.length;
+      const itemContent = content.substring(startIndex, endIndex);
+      
+      // Extract items from \resumeItemListStart...\resumeItemListEnd or \resumeItem{}
+      const description = extractResumeItems(itemContent);
+      console.log(`  -> SubHeading Description length: ${description.length}`);
+      
+      items.push({
+        company: company || title,
+        role: title,
+        duration: dates,
+        description: description
+      });
+    }
+  }
+  
+  // Try \resumeProjectHeading
+  if (headingMatches.length === 0 && items.length === 0) {
+    const resumeProjectHeadingRegex = /\\resumeProjectHeading\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}\s*\{([^}]*)\}/g;
+    const projectMatches = Array.from(content.matchAll(resumeProjectHeadingRegex));
+    console.log(`  -> Found ${projectMatches.length} resumeProjectHeading entries`);
+    
+    projectMatches.forEach((m, i) => {
+      console.log(`     Match ${i+1} at index ${m.index}`);
+    });
+    
+    for (let i = 0; i < projectMatches.length; i++) {
+      const match = projectMatches[i];
+      const titleAndTech = match[1];
+      const dates = cleanLatexText(match[2]);
+      
+      // Extract title from \textbf{} and tech from \emph{}
+      const titleMatch = titleAndTech.match(/\\textbf\{([^}]+)\}/);
+      const techMatch = titleAndTech.match(/\\emph\{([^}]+)\}/);
+      
+      const title = titleMatch ? cleanLatexText(titleMatch[1]) : cleanLatexText(titleAndTech);
+      const tech = techMatch ? cleanLatexText(techMatch[1]) : '';
+      
+      console.log(`  -> Project Entry ${i+1}: ${title}`);
+      
+      // Find content after this heading until next heading
+      const startIndex = match.index! + match[0].length;
+      const nextMatch = projectMatches[i + 1];
+      const endIndex = nextMatch ? nextMatch.index! : content.length;
+      const itemContent = content.substring(startIndex, endIndex);
+      
+      // Extract items
+      const description = extractResumeItems(itemContent);
+      console.log(`  -> Project Description length: ${description.length}`);
+      
+      items.push({
+        company: title,
+        role: tech,
+        duration: dates,
+        description: description
+      });
+    }
+  }
+  
+  // Also try \projectHeading{title}{url}{tech}
+  if (headingMatches.length === 0 && items.length === 0) {
     const projectHeadingRegex = /\\projectHeading(?:WithDate)?\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}(?:\{([^}]*)\})?/g;
     const projectMatches = Array.from(content.matchAll(projectHeadingRegex));
     console.log(`  -> Found ${projectMatches.length} projectHeading entries`);
@@ -561,6 +654,33 @@ function parseEducationSection(sectionName: string, content: string): GenericSec
       description: description
     }
   };
+}
+
+/**
+ * Extract items from \resumeItem{} or \resumeItemListStart...\resumeItemListEnd
+ */
+function extractResumeItems(content: string): string {
+  // First try to extract from \resumeItemListStart...\resumeItemListEnd
+  const resumeItemListMatch = content.match(/\\resumeItemListStart([\s\S]*?)\\resumeItemListEnd/);
+  const itemContent = resumeItemListMatch ? resumeItemListMatch[1] : content;
+  
+  // Extract all \resumeItem{...} entries
+  const resumeItemRegex = /\\resumeItem\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g;
+  const itemMatches = Array.from(itemContent.matchAll(resumeItemRegex));
+  
+  console.log(`    -> Found ${itemMatches.length} resumeItem entries`);
+  
+  if (itemMatches.length > 0) {
+    const cleanedItems = itemMatches
+      .map(match => cleanLatexText(match[1]))
+      .filter(item => item.length > 0);
+    
+    console.log(`    -> Cleaned items: ${cleanedItems.length}`);
+    return cleanedItems.join('\n');
+  }
+  
+  // Fallback to regular bullet points extraction
+  return extractBulletPoints(content);
 }
 
 /**
