@@ -204,3 +204,27 @@ export interface ChatSessionUpdate {
   messages?: ChatMessage[];
 }
 
+// Response Tracking types
+export interface ResponseTrackingSummary {
+  application_id: number;
+  company_name: string;
+  role_title: string;
+  total_responses: number;
+  interview_invites: number;
+  rejections: number;
+  offers: number;
+  latest_response_date?: string;
+  latest_response_type?: string;
+  status: ApplicationStatus;
+}
+
+export interface GlobalResponseStatistics {
+  total_applications: number;
+  total_communications: number;
+  total_interview_invites: number;
+  total_rejections: number;
+  total_offers: number;
+  response_rate: number; // Percentage
+  interview_rate: number; // Percentage
+  offer_rate: number; // Percentage
+}

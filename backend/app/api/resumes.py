@@ -18,19 +18,19 @@ def get_resumes(db: Session = Depends(get_resumes_db)):
     return db.query(Resume).order_by(Resume.created_at.desc()).all()
 
 
-@router.get("/{resume_id}", response_model=ResumeSchema)
-def get_resume(resume_id: int, db: Session = Depends(get_resumes_db)):
-    """Get a single resume by ID."""
-    resume = db.query(Resume).filter(Resume.id == resume_id).first()
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
-    return resume
-
-
 @router.post("", response_model=ResumeSchema, status_code=201)
 def create_resume(resume: ResumeCreate, db: Session = Depends(get_resumes_db)):
     """Create a new resume."""
-    db_resume = Resume(**resume.model_dump())
+    resume_data = resume.model_dump()
+    
+    # If setting as master, ensure no other resume is master
+    if resume_data.get('is_master', False):
+        # Unset any existing master resume
+        existing_master = db.query(Resume).filter(Resume.is_master == True).first()
+        if existing_master:
+            existing_master.is_master = False
+    
+    db_resume = Resume(**resume_data)
     db.add(db_resume)
     db.commit()
     db.refresh(db_resume)
@@ -173,6 +173,12 @@ async def upload_resume(
     # Create resume with file storage (no extraction)
     resume_name = name or file.filename.replace(".pdf", "").replace(".docx", "").replace(".doc", "") if file.filename else "Uploaded Resume"
     
+    # If setting as master, ensure no other resume is master
+    if is_master:
+        existing_master = db.query(Resume).filter(Resume.is_master == True).first()
+        if existing_master:
+            existing_master.is_master = False
+    
     db_resume = Resume(
         name=resume_name,
         is_master=is_master,
@@ -203,4 +209,110 @@ async def upload_resume(
             # Continue without LaTeX conversion - upload still succeeds
     
     return db_resume
+
+
+# Specific routes must come BEFORE generic {resume_id} routes
+@router.get("/{resume_id}/file")
+def get_resume_file(resume_id: int, db: Session = Depends(get_resumes_db)):
+    """Get the original PDF/DOCX file for a resume."""
+    resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    
+    if not resume.file_data:
+        raise HTTPException(status_code=404, detail="No file attached to this resume")
+    
+    # Determine content type and filename
+    content_type = resume.file_type or "application/pdf"
+    filename = f"{resume.name}.pdf" if "pdf" in content_type else f"{resume.name}.docx"
+    
+    return Response(
+        content=resume.file_data,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'}
+    )
+
+
+@router.patch("/{resume_id}/set-master", response_model=ResumeSchema)
+def set_master_resume(resume_id: int, db: Session = Depends(get_resumes_db)):
+    """Set a resume as the master resume. Unsets any other master resume."""
+    db_resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not db_resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    
+    # Unset any existing master resume
+    existing_master = db.query(Resume).filter(Resume.is_master == True, Resume.id != resume_id).first()
+    if existing_master:
+        existing_master.is_master = False
+    
+    # Set this resume as master
+    db_resume.is_master = True
+    db_resume.updated_at = datetime.now()
+    db.commit()
+    db.refresh(db_resume)
+    return db_resume
+
+
+@router.patch("/{resume_id}/unset-master", response_model=ResumeSchema)
+def unset_master_resume(resume_id: int, db: Session = Depends(get_resumes_db)):
+    """Unset a resume as the master resume."""
+    db_resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not db_resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    
+    db_resume.is_master = False
+    db_resume.updated_at = datetime.now()
+    db.commit()
+    db.refresh(db_resume)
+    return db_resume
+
+
+# Generic routes come AFTER specific routes
+@router.get("/{resume_id}", response_model=ResumeSchema)
+def get_resume(resume_id: int, db: Session = Depends(get_resumes_db)):
+    """Get a single resume by ID."""
+    resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    return resume
+
+
+@router.patch("/{resume_id}", response_model=ResumeSchema)
+def update_resume(
+    resume_id: int,
+    resume_update: ResumeUpdate,
+    db: Session = Depends(get_resumes_db)
+):
+    """Update a resume."""
+    db_resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not db_resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    # Store version history before update
+    if db_resume.content:
+        db_resume.version_history.append({
+            "timestamp": datetime.now().isoformat(),
+            "content": db_resume.content
+        })
+
+    update_data = resume_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_resume, field, value)
+
+    db_resume.updated_at = datetime.now()
+    db.commit()
+    db.refresh(db_resume)
+    return db_resume
+
+
+@router.delete("/{resume_id}", status_code=204)
+def delete_resume(resume_id: int, db: Session = Depends(get_resumes_db)):
+    """Delete a resume."""
+    db_resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not db_resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    db.delete(db_resume)
+    db.commit()
+    return None
 
