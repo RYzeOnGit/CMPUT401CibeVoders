@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, ArrowLeft, Plus, Upload, X, Trash2, Copy, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize, Edit } from 'lucide-react';
+import { FileText, ArrowLeft, Plus, Upload, X, Trash2, Copy, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize, Edit, Crown } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { resumesApi } from '../api/client';
 import type { Resume } from '../types';

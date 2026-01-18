@@ -125,6 +125,16 @@ export const resumesApi = {
     );
     return response.data;
   },
+
+  setMaster: async (id: number): Promise<Resume> => {
+    const response = await api.patch<Resume>(`/api/resumes/${id}/set-master`);
+    return response.data;
+  },
+
+  unsetMaster: async (id: number): Promise<Resume> => {
+    const response = await api.patch<Resume>(`/api/resumes/${id}/unset-master`);
+    return response.data;
+  },
 };
 
 // Communications API
