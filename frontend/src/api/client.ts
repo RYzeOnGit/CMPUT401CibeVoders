@@ -108,25 +108,14 @@ export const resumesApi = {
     return `${API_BASE_URL}/api/resumes/${id}/file`;
   },
 
-  getLatexUrl: (id: number): string => {
-    return `${API_BASE_URL}/api/resumes/${id}/latex`;
+  setMaster: async (id: number): Promise<Resume> => {
+    const response = await api.patch<Resume>(`/api/resumes/${id}/set-master`);
+    return response.data;
   },
 
-  getTemplates: async (): Promise<Record<string, string>> => {
-    const response = await api.get<{ templates: Record<string, string> }>('/api/resumes/templates/list');
-    return response.data.templates;
-  },
-
-  getTemplatePreviewUrl: (templateId: string): string => {
-    return `${API_BASE_URL}/api/resumes/templates/${templateId}/preview`;
-  },
-
-  applyTemplate: async (id: number, templateId: string): Promise<Resume> => {
-    const response = await api.post<{ success: boolean; message: string; new_resume_id: number; new_resume: Resume }>(
-      `/api/resumes/${id}/apply-template`,
-      { template_id: templateId }
-    );
-    return response.data.new_resume;
+  unsetMaster: async (id: number): Promise<Resume> => {
+    const response = await api.patch<Resume>(`/api/resumes/${id}/unset-master`);
+    return response.data;
   },
 };
 
