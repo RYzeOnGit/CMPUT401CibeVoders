@@ -103,7 +103,7 @@ export default function SankeyDiagram({ data }: SankeyDiagramProps) {
     const rightSideNodes = nodeCount - 1;
     const availableWidth = width - margin.left - margin.right;
     const defaultNodeWidth = Math.max(20, Math.min(30, availableWidth / 25));
-    const appliedNodeWidth = defaultNodeWidth * 1.8; // Make Applied node wider
+    const appliedNodeWidth = defaultNodeWidth * 3.5; // Make Applied node wide enough to fit text inside
     
     // Calculate optimal node padding based on height and number of nodes
     // Distribute nodes evenly with good spacing
@@ -193,11 +193,28 @@ export default function SankeyDiagram({ data }: SankeyDiagramProps) {
       .data(computedNodes)
       .enter()
       .append('text')
-      .attr('x', (d: any) => (d.x0 < width / 2 ? d.x1 + 10 : d.x0 - 10))
+      .attr('x', (d: any) => {
+        // For Applied node, center text inside the box
+        if (d.id === 'applied') {
+          return (d.x0 + d.x1) / 2;
+        }
+        // For other nodes, position outside
+        return d.x0 < width / 2 ? d.x1 + 10 : d.x0 - 10;
+      })
       .attr('y', (d: any) => (d.y0 + d.y1) / 2)
       .attr('dy', '0.35em')
-      .attr('text-anchor', (d: any) => (d.x0 < width / 2 ? 'start' : 'end'))
-      .attr('fill', '#e5e7eb')
+      .attr('text-anchor', (d: any) => {
+        // Center text for Applied node
+        if (d.id === 'applied') {
+          return 'middle';
+        }
+        // For other nodes, anchor based on position
+        return d.x0 < width / 2 ? 'start' : 'end';
+      })
+      .attr('fill', (d: any) => {
+        // White text for Applied node (inside blue box)
+        return d.id === 'applied' ? '#ffffff' : '#e5e7eb';
+      })
       .attr('font-size', '14px')
       .attr('font-weight', '500')
       .text((d: any) => {
