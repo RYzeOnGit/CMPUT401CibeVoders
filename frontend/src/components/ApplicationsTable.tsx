@@ -16,7 +16,10 @@ import { getStatusColor } from '../utils/statusColors';
 import { formatDate } from '../utils/dateUtils';
 import { useApplicationStore } from '../store/applicationStore';
 import EditableCell from './EditableCell';
-import { Trash2, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { Trash2, ChevronLeft, ChevronRight, Search, X, Plus, Eye, MessageSquare } from 'lucide-react';
+import { communicationsApi } from '../api/client';
+import CreateCommunicationModal from './CreateCommunicationModal';
+import CommunicationsPanel from './CommunicationsPanel';
 
 interface ApplicationsTableProps {
   applications: Application[];
