@@ -1,7 +1,27 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, FileText, RefreshCw, Edit2, Save } from 'lucide-react';
+import { X, Plus, FileText, RefreshCw, ChevronDown } from 'lucide-react';
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
 import { resumesApi } from '../api/client';
-import type { Resume, ResumeContent, Experience } from '../types';
+import type { Resume, ResumeContent, GenericSection, SectionType, BulletPointType } from '../types';
+import { parseLatexToContent } from '../utils/latexParser';
+import { migrateToGenericSections, createEmptySection } from '../utils/sectionMigration';
+import { BULLET_POINT_TYPE_LABELS } from '../utils/bulletPointPlaceholders';
+import GenericSectionForm from './resume-sections/GenericSectionForm';
+import SortableSection from './resume-sections/SortableSection';
 
 interface EditResumeModalProps {
   resumeId: number;
@@ -9,221 +29,45 @@ interface EditResumeModalProps {
   onSuccess: () => void;
 }
 
+const MAX_SECTIONS = 10;
+
 export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditResumeModalProps) {
   const [resume, setResume] = useState<Resume | null>(null);
   const [content, setContent] = useState<ResumeContent>({
     name: '',
     email: '',
     phone: '',
-    summary: '',
-    experience: [],
-    skills: [],
-    education: { degree: '', university: '', year: '' }
   });
+  const [sections, setSections] = useState<GenericSection[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [viewMode, setViewMode] = useState<'form' | 'latex'>('form');
   const [latexContent, setLatexContent] = useState<string>('');
-  const [sectionNames, setSectionNames] = useState({
-    summary: 'Summary',
-    experience: 'Experience',
-    skills: 'Skills',
-    education: 'Education'
-  });
-  const [editingSection, setEditingSection] = useState<string | null>(null);
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingSectionName, setEditingSectionName] = useState<string>('');
+  const [showSectionSelector, setShowSectionSelector] = useState(false);
+  const [showBulletPointTypes, setShowBulletPointTypes] = useState(false);
+  const [sectionOrder, setSectionOrder] = useState<string[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  
+  const availableSectionTypes: { type: SectionType; label: string; defaultName: string }[] = [
+    { type: 'text', label: 'Text Section', defaultName: 'Summary' },
+    { type: 'bullet-points', label: 'Bullet Points', defaultName: 'Experience' },
+    { type: 'list', label: 'List', defaultName: 'Skills' },
+    { type: 'education', label: 'Education', defaultName: 'Education' }
+  ];
+
+  const bulletPointTypes: BulletPointType[] = ['work-experience', 'projects', 'generic'];
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
 
 
-  // Parse LaTeX content and extract structured data
-  const parseLatexToContent = (latex: string): ResumeContent => {
-    const parsed: ResumeContent = {
-      name: '',
-      email: '',
-      phone: '',
-      summary: '',
-      experience: [],
-      skills: [],
-      education: { degree: '', university: '', year: '' }
-    };
-
-    if (!latex) return parsed;
-
-    // Extract name - common patterns: \name{}, \author{}, \fullname{}
-    const namePatterns = [
-      /\\name\{([^}]+)\}/,
-      /\\author\{([^}]+)\}/,
-      /\\fullname\{([^}]+)\}/,
-      /\\newcommand\{\\name\}\{([^}]+)\}/
-    ];
-    for (const pattern of namePatterns) {
-      const match = latex.match(pattern);
-      if (match) {
-        parsed.name = match[1].trim();
-        break;
-      }
-    }
-
-    // Extract email
-    const emailPatterns = [
-      /\\email\{([^}]+)\}/,
-      /\\href\{mailto:([^}]+)\}/,
-      /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
-    ];
-    for (const pattern of emailPatterns) {
-      const match = latex.match(pattern);
-      if (match) {
-        parsed.email = match[1].trim();
-        break;
-      }
-    }
-
-    // Extract phone
-    const phonePatterns = [
-      /\\phone\{([^}]+)\}/,
-      /\\mobile\{([^}]+)\}/,
-      /(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/
-    ];
-    for (const pattern of phonePatterns) {
-      const match = latex.match(pattern);
-      if (match) {
-        parsed.phone = match[1].trim();
-        break;
-      }
-    }
-
-    // Extract summary/objective - usually in a section or paragraph
-    const summaryPatterns = [
-      /\\section\{Summary\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i,
-      /\\section\{Objective\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i,
-      /\\section\{About\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i
-    ];
-    for (const pattern of summaryPatterns) {
-      const match = latex.match(pattern);
-      if (match) {
-        let summaryText = match[1]
-          .replace(/\\textbf\{([^}]+)\}/g, '$1')
-          .replace(/\\textit\{([^}]+)\}/g, '$1')
-          .replace(/\\emph\{([^}]+)\}/g, '$1')
-          .replace(/\\text\{([^}]+)\}/g, '$1')
-          .replace(/\\par/g, '\n')
-          .replace(/\{|\}/g, '')
-          .trim();
-        parsed.summary = summaryText;
-        break;
-      }
-    }
-
-    // Extract experience
-    const experiencePattern = /\\section\{Experience\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i;
-    const expMatch = latex.match(experiencePattern);
-    if (expMatch) {
-      const expContent = expMatch[1];
-      
-      // Try to find individual experience entries
-      const expEntries: Experience[] = [];
-      
-      // Simpler approach: look for itemize items
-      const itemizePattern = /\\begin\{itemize\}[\s\S]*?\\end\{itemize\}/gi;
-      const itemizeMatch = expContent.match(itemizePattern);
-      
-      if (itemizeMatch) {
-        const items = itemizeMatch[0].match(/\\item\s*([^\n]+)/g) || [];
-        items.forEach((item) => {
-          const text = item.replace(/\\item\s*/, '').replace(/\{|\}/g, '').trim();
-          // Try to extract company, role, duration from text
-          const parts = text.split(/[|•]/).map(p => p.trim());
-          if (parts.length >= 2) {
-            expEntries.push({
-              company: parts[0] || '',
-              role: parts[1] || '',
-              duration: parts[2] || '',
-              bullet_points: []
-            });
-          }
-        });
-      }
-      
-      // If no structured entries found, create one from raw text
-      if (expEntries.length === 0) {
-        const cleanText = expContent
-          .replace(/\\textbf\{([^}]+)\}/g, '$1')
-          .replace(/\\textit\{([^}]+)\}/g, '$1')
-          .replace(/\\emph\{([^}]+)\}/g, '$1')
-          .replace(/\\text\{([^}]+)\}/g, '$1')
-          .replace(/\\par/g, '\n')
-          .replace(/\{|\}/g, '')
-          .trim();
-        
-        if (cleanText) {
-          expEntries.push({
-            company: '',
-            role: '',
-            duration: '',
-            bullet_points: cleanText.split('\n').filter(l => l.trim()).map(l => l.replace(/^[•\-\*]\s*/, '').trim())
-          });
-        }
-      }
-      
-      parsed.experience = expEntries;
-    }
-
-    // Extract skills
-    const skillsPattern = /\\section\{Skills?\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i;
-    const skillsMatch = latex.match(skillsPattern);
-    if (skillsMatch) {
-      const skillsContent = skillsMatch[1];
-      // Extract from itemize or comma-separated
-      const itemizeMatch = skillsContent.match(/\\begin\{itemize\}[\s\S]*?\\end\{itemize\}/);
-      if (itemizeMatch) {
-        const items = itemizeMatch[0].match(/\\item\s*([^\n]+)/g) || [];
-        parsed.skills = items.map(item => 
-          item.replace(/\\item\s*/, '').replace(/\{|\}/g, '').trim()
-        );
-      } else {
-        // Try comma-separated or other formats
-        const skillsText = skillsContent
-          .replace(/\\textbf\{([^}]+)\}/g, '$1')
-          .replace(/\{|\}/g, '')
-          .trim();
-        parsed.skills = skillsText.split(/[,;]/).map(s => s.trim()).filter(s => s);
-      }
-    }
-
-    // Extract education
-    const educationPattern = /\\section\{Education\}([\s\S]*?)(?=\\section|\\end\{document\}|$)/i;
-    const eduMatch = latex.match(educationPattern);
-    if (eduMatch) {
-      const eduContent = eduMatch[1];
-      const eduText = eduContent
-        .replace(/\\textbf\{([^}]+)\}/g, '$1')
-        .replace(/\\textit\{([^}]+)\}/g, '$1')
-        .replace(/\{|\}/g, '')
-        .trim();
-      
-      // Try to extract degree, university, year
-      const yearMatch = eduText.match(/(\d{4})/);
-      const year = yearMatch ? yearMatch[1] : '';
-      
-      // Common patterns: "Degree from University (Year)" or "University - Degree"
-      const parts = eduText.split(/[,\-\(\)]/).map(p => p.trim()).filter(p => p && !p.match(/^\d{4}$/));
-      if (parts.length >= 2) {
-        parsed.education = {
-          degree: parts[0] || '',
-          university: parts[1] || '',
-          year: year
-        };
-      } else if (parts.length === 1) {
-        parsed.education = {
-          degree: parts[0] || '',
-          university: '',
-          year: year
-        };
-      }
-    }
-
-    return parsed;
-  };
 
   useEffect(() => {
     const loadResume = async () => {
@@ -235,10 +79,6 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
           name: '',
           email: '',
           phone: '',
-          summary: '',
-          experience: [],
-          skills: [],
-          education: { degree: '', university: '', year: '' }
         };
         
         let loadedLatex = '';
@@ -247,7 +87,6 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
         if (resumeData.latex_content) {
           loadedLatex = resumeData.latex_content;
         } else if (resumeData.file_type?.includes('tex')) {
-          // Fetch .tex file content
           try {
             const fileUrl = resumesApi.getFileUrl(resumeId);
             const response = await fetch(fileUrl);
@@ -261,22 +100,53 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
         
         setLatexContent(loadedLatex);
         
-        // Parse LaTeX content and populate form fields
+        // Parse LaTeX content and merge with existing
         if (loadedLatex) {
           const parsedContent = parseLatexToContent(loadedLatex);
-          // Merge parsed content with existing content (parsed takes precedence for empty fields, otherwise merge)
           loadedContent = {
             name: parsedContent.name || loadedContent.name || '',
             email: parsedContent.email || loadedContent.email || '',
             phone: parsedContent.phone || loadedContent.phone || '',
-            summary: parsedContent.summary || loadedContent.summary || '',
-            experience: parsedContent.experience?.length ? parsedContent.experience : loadedContent.experience || [],
-            skills: parsedContent.skills?.length ? parsedContent.skills : loadedContent.skills || [],
-            education: parsedContent.education?.degree ? parsedContent.education : loadedContent.education || { degree: '', university: '', year: '' }
+            // Preserve existing sections if they exist
+            sections: loadedContent.sections,
+            sectionOrder: loadedContent.sectionOrder,
           };
         }
         
         setContent(loadedContent);
+        
+        // Load or migrate sections
+        let loadedSections: GenericSection[] = [];
+        if (loadedContent.sections && loadedContent.sections.length > 0) {
+          // Use new format sections - filter out any empty sections
+          loadedSections = loadedContent.sections.filter(section => {
+            // Keep section if it has meaningful content
+            switch (section.data.type) {
+              case 'text':
+                return section.data.content.trim().length > 0;
+              case 'bullet-points':
+                return section.data.items.length > 0;
+              case 'list':
+                return section.data.items.length > 0 && section.data.items.some(item => item.trim().length > 0);
+              case 'education':
+                return section.data.degree.trim().length > 0;
+              default:
+                return true;
+            }
+          });
+        } else {
+          // Migrate from old format
+          loadedSections = migrateToGenericSections(resumeData.content || {});
+        }
+        
+        setSections(loadedSections);
+        
+        // Load section order
+        if (loadedContent.sectionOrder && loadedContent.sectionOrder.length > 0) {
+          setSectionOrder(loadedContent.sectionOrder);
+        } else {
+          setSectionOrder(loadedSections.map(s => s.id));
+        }
       } catch (error) {
         console.error('Failed to load resume:', error);
         alert('Failed to load resume');
@@ -288,6 +158,22 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
     loadResume();
   }, [resumeId]);
 
+  // Close section selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if ((showSectionSelector || showBulletPointTypes) && !target.closest('.section-selector-container')) {
+        setShowSectionSelector(false);
+        setShowBulletPointTypes(false);
+      }
+    };
+
+    if (showSectionSelector || showBulletPointTypes) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showSectionSelector, showBulletPointTypes]);
+
 
   const handleParseLatex = () => {
     if (!latexContent) {
@@ -295,19 +181,26 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
       return;
     }
     
-    // Parse LaTeX content and populate form fields
+    // Parse LaTeX content and convert to generic sections
     const parsed = parseLatexToContent(latexContent);
+    const parsedSections = migrateToGenericSections(parsed);
+    
     setContent(prev => ({
+      ...prev,
       name: parsed.name || prev.name || '',
       email: parsed.email || prev.email || '',
       phone: parsed.phone || prev.phone || '',
-      summary: parsed.summary || prev.summary || '',
-      experience: parsed.experience?.length ? parsed.experience : prev.experience || [],
-      skills: parsed.skills?.length ? parsed.skills : prev.skills || [],
-      education: parsed.education?.degree ? parsed.education : prev.education || { degree: '', university: '', year: '' }
     }));
+    
+    // Merge parsed sections with existing, preserving order
+    setSections(prev => {
+      const existingIds = new Set(prev.map(s => s.id));
+      const newSections = parsedSections.filter(s => !existingIds.has(s.id));
+      return [...prev, ...newSections];
+    });
+    
     setViewMode('form');
-    alert('LaTeX content parsed and form fields updated!');
+    alert('LaTeX content parsed and sections updated!');
   };
 
   const handleSave = async () => {
@@ -315,7 +208,17 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
 
     setSaving(true);
     try {
-      await resumesApi.update(resumeId, { content });
+      // Save content with sections
+      const contentToSave: ResumeContent = {
+        ...content,
+        sections: sections,
+        sectionOrder: sectionOrder,
+      };
+      console.log('Saving content with sections:', {
+        sectionsCount: sections.length,
+        sectionOrder: sectionOrder,
+      });
+      await resumesApi.update(resumeId, { content: contentToSave });
       onSuccess();
       onClose();
     } catch (error) {
@@ -326,81 +229,81 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
     }
   };
 
-  const addExperience = () => {
-    setContent(prev => ({
-      ...prev,
-      experience: [...(prev.experience || []), { company: '', role: '', duration: '', bullet_points: [] }]
-    }));
+
+  const addSection = (sectionType: SectionType, bulletPointType?: BulletPointType) => {
+    if (sections.length >= MAX_SECTIONS) {
+      alert(`Maximum of ${MAX_SECTIONS} sections allowed.`);
+      return;
+    }
+    
+    setShowSectionSelector(false);
+    setShowBulletPointTypes(false);
+    
+    const sectionTypeInfo = availableSectionTypes.find(s => s.type === sectionType);
+    let defaultName = sectionTypeInfo?.defaultName || 'New Section';
+    
+    // Use bullet point type label if it's a bullet-points section
+    if (sectionType === 'bullet-points' && bulletPointType) {
+      defaultName = BULLET_POINT_TYPE_LABELS[bulletPointType];
+    }
+    
+    const newSection = createEmptySection(sectionType, defaultName, bulletPointType);
+    
+    setSections(prev => [...prev, newSection]);
+    setSectionOrder(prev => [...prev, newSection.id]);
   };
 
-  const updateExperience = (index: number, field: keyof Experience, value: any) => {
-    setContent(prev => {
-      const newExp = [...(prev.experience || [])];
-      newExp[index] = { ...newExp[index], [field]: value };
-      return { ...prev, experience: newExp };
+  const removeSection = (sectionId: string) => {
+    setSections(prev => prev.filter(s => s.id !== sectionId));
+    setSectionOrder(prev => prev.filter(id => id !== sectionId));
+  };
+
+  const updateSection = (updatedSection: GenericSection) => {
+    setSections(prev => prev.map(s => s.id === updatedSection.id ? updatedSection : s));
+  };
+
+  const handleDragStart = (event: any) => {
+    setActiveId(event.active.id);
+  };
+
+  const handleDragEnd = (event: any) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over || active.id === over.id) return;
+
+    setSectionOrder((items) => {
+      const oldIndex = items.indexOf(active.id as string);
+      const newIndex = items.indexOf(over.id as string);
+      return arrayMove(items, oldIndex, newIndex);
     });
   };
 
-  const removeExperience = (index: number) => {
-    setContent(prev => ({
-      ...prev,
-      experience: (prev.experience || []).filter((_, i) => i !== index)
-    }));
+  // Get sections in the correct order
+  const orderedSections = sectionOrder
+    .map(id => sections.find(s => s.id === id))
+    .filter((s): s is GenericSection => s !== undefined);
+
+  const handleSectionNameEdit = (sectionId: string) => {
+    const section = sections.find(s => s.id === sectionId);
+    if (section) {
+      setEditingSectionId(sectionId);
+      setEditingSectionName(section.name);
+    }
   };
 
-  const addBulletPoint = (expIndex: number) => {
-    setContent(prev => {
-      const newExp = [...(prev.experience || [])];
-      newExp[expIndex] = {
-        ...newExp[expIndex],
-        bullet_points: [...(newExp[expIndex].bullet_points || []), '']
-      };
-      return { ...prev, experience: newExp };
-    });
+  const handleSectionNameSave = (sectionId: string, newName: string) => {
+    const section = sections.find(s => s.id === sectionId);
+    if (section) {
+      updateSection({ ...section, name: newName });
+    }
+    setEditingSectionId(null);
+    setEditingSectionName('');
   };
 
-  const updateBulletPoint = (expIndex: number, bulletIndex: number, value: string) => {
-    setContent(prev => {
-      const newExp = [...(prev.experience || [])];
-      newExp[expIndex] = {
-        ...newExp[expIndex],
-        bullet_points: newExp[expIndex].bullet_points.map((bp, i) => i === bulletIndex ? value : bp)
-      };
-      return { ...prev, experience: newExp };
-    });
-  };
-
-  const removeBulletPoint = (expIndex: number, bulletIndex: number) => {
-    setContent(prev => {
-      const newExp = [...(prev.experience || [])];
-      newExp[expIndex] = {
-        ...newExp[expIndex],
-        bullet_points: newExp[expIndex].bullet_points.filter((_, i) => i !== bulletIndex)
-      };
-      return { ...prev, experience: newExp };
-    });
-  };
-
-  const addSkill = () => {
-    setContent(prev => ({
-      ...prev,
-      skills: [...(prev.skills || []), '']
-    }));
-  };
-
-  const updateSkill = (index: number, value: string) => {
-    setContent(prev => {
-      const newSkills = [...(prev.skills || [])];
-      newSkills[index] = value;
-      return { ...prev, skills: newSkills };
-    });
-  };
-
-  const removeSkill = (index: number) => {
-    setContent(prev => ({
-      ...prev,
-      skills: (prev.skills || []).filter((_, i) => i !== index)
-    }));
+  const handleSectionNameCancel = () => {
+    setEditingSectionId(null);
+    setEditingSectionName('');
   };
 
   if (loading) {
@@ -423,7 +326,7 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-2xl shadow-2xl max-w-7xl w-full p-8 border border-gray-700 max-h-[95vh] flex flex-col">
+      <div className="bg-gray-800 rounded-2xl shadow-2xl max-w-4xl w-full p-8 border border-gray-700 max-h-[95vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-700">
           <h3 className="text-xl font-semibold text-gray-100">Edit Resume: {resume.name}</h3>
@@ -456,9 +359,9 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
         </div>
         
         {/* Contact Information Header */}
-        <div className="mb-4 pb-4 border-b border-gray-700">
+        <div className="mb-6 pr-8">
           <div className="bg-gray-900 rounded-lg border border-gray-700 p-4">
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
+            <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-semibold text-purple-400 uppercase tracking-wider">
                 Contact Information
               </h4>
@@ -508,7 +411,7 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
                   LaTeX Content
                 </h4>
               </div>
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto scrollbar-thin">
                 <pre className="bg-gray-900 rounded-lg p-4 text-gray-100 font-mono text-xs whitespace-pre-wrap overflow-x-auto">
                   {latexContent || 'No LaTeX content available. LaTeX will be generated when you save the resume.'}
                 </pre>
@@ -516,435 +419,148 @@ export default function EditResumeModal({ resumeId, onClose, onSuccess }: EditRe
             </div>
           ) : (
             /* Form View */
-            <div className="flex-1 overflow-y-auto min-h-0 space-y-6">
-              {/* Summary Section */}
-              <div className="bg-gray-900 rounded-lg border border-gray-700 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  {editingSection === 'summary' ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <input
-                        type="text"
-                        value={editingSectionName}
-                        onChange={(e) => setEditingSectionName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            setSectionNames(prev => ({ ...prev, summary: editingSectionName }));
-                            setEditingSection(null);
-                            setEditingSectionName('');
-                          } else if (e.key === 'Escape') {
-                            setEditingSection(null);
-                            setEditingSectionName('');
-                          }
-                        }}
-                        className="flex-1 px-3 py-1 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm font-semibold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => {
-                          setSectionNames(prev => ({ ...prev, summary: editingSectionName }));
-                          setEditingSection(null);
-                          setEditingSectionName('');
-                        }}
-                        className="p-1 text-green-400 hover:text-green-300"
-                      >
-                        <Save size={14} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingSection(null);
-                          setEditingSectionName('');
-                        }}
-                        className="p-1 text-gray-400 hover:text-gray-300"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider">
-                        {sectionNames.summary}
-                      </label>
-                      <button
-                        onClick={() => {
-                          setEditingSection('summary');
-                          setEditingSectionName(sectionNames.summary);
-                        }}
-                        className="p-1 text-gray-400 hover:text-gray-300"
-                        title="Rename section"
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                    </>
-                  )}
-                </div>
-                <textarea
-                  value={content.summary || ''}
-                  onChange={(e) => setContent(prev => ({ ...prev, summary: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm resize-y min-h-[100px] focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder="Professional summary or objective..."
-                />
-              </div>
-
-              {/* Experience Section */}
-              <div className="bg-gray-900 rounded-lg border border-gray-700 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  {editingSection === 'experience' ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <input
-                        type="text"
-                        value={editingSectionName}
-                        onChange={(e) => setEditingSectionName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            setSectionNames(prev => ({ ...prev, experience: editingSectionName }));
-                            setEditingSection(null);
-                            setEditingSectionName('');
-                          } else if (e.key === 'Escape') {
-                            setEditingSection(null);
-                            setEditingSectionName('');
-                          }
-                        }}
-                        className="flex-1 px-3 py-1 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm font-semibold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => {
-                          setSectionNames(prev => ({ ...prev, experience: editingSectionName }));
-                          setEditingSection(null);
-                          setEditingSectionName('');
-                        }}
-                        className="p-1 text-green-400 hover:text-green-300"
-                      >
-                        <Save size={14} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingSection(null);
-                          setEditingSectionName('');
-                        }}
-                        className="p-1 text-gray-400 hover:text-gray-300"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider">
-                        {sectionNames.experience}
-                      </label>
-                      <div className="flex items-center gap-2">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="flex-1 overflow-y-auto min-h-0 space-y-6 pr-8 scrollbar-thin">
+                {/* Section Selector */}
+                <div className="relative section-selector-container">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-gray-400">
+                      {/* Note: Contact Information section is not included in this count */}
+                      Sections: <span className={`font-semibold ${sections.length >= MAX_SECTIONS ? 'text-red-400' : 'text-gray-300'}`}>
+                        {sections.length} / {MAX_SECTIONS}
+                      </span>
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setShowSectionSelector(!showSectionSelector)}
+                    disabled={sections.length >= MAX_SECTIONS}
+                    className={`w-full px-4 py-3 rounded-lg text-sm font-medium flex items-center justify-between gap-2 transition-colors ${
+                      sections.length >= MAX_SECTIONS
+                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        : 'bg-purple-600 hover:bg-purple-700 text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Plus size={16} />
+                      Add Section
+                    </span>
+                    <ChevronDown size={16} className={`transition-transform ${showSectionSelector ? 'rotate-180' : ''}`} />
+                  </button>
+                  {showSectionSelector && !showBulletPointTypes && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10 overflow-hidden">
+                      {availableSectionTypes.map((sectionType) => (
                         <button
+                          key={sectionType.type}
                           onClick={() => {
-                            setEditingSection('experience');
-                            setEditingSectionName(sectionNames.experience);
+                            if (sectionType.type === 'bullet-points') {
+                              setShowBulletPointTypes(true);
+                            } else {
+                              addSection(sectionType.type);
+                            }
                           }}
-                          className="p-1 text-gray-400 hover:text-gray-300"
-                          title="Rename section"
+                          disabled={sections.length >= MAX_SECTIONS}
+                          className={`w-full px-4 py-3 text-left text-sm transition-colors flex items-center justify-between ${
+                            sections.length >= MAX_SECTIONS
+                              ? 'opacity-50 cursor-not-allowed text-gray-500'
+                              : 'text-gray-300 hover:bg-gray-700'
+                          }`}
                         >
-                          <Edit2 size={14} />
+                          <span>{sectionType.label}</span>
+                          {sectionType.type === 'bullet-points' && (
+                            <ChevronDown size={14} className="text-gray-400" />
+                          )}
+                          {sections.length >= MAX_SECTIONS && sectionType.type !== 'bullet-points' && (
+                            <span className="text-xs text-red-400">Max reached</span>
+                          )}
                         </button>
+                      ))}
+                      {sections.length >= MAX_SECTIONS && (
+                        <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-700">
+                          Maximum of {MAX_SECTIONS} sections reached
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {showBulletPointTypes && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10 overflow-hidden">
+                      <button
+                        onClick={() => setShowBulletPointTypes(false)}
+                        className="w-full px-4 py-2 text-left text-xs text-gray-400 hover:bg-gray-700 flex items-center gap-2 border-b border-gray-700"
+                      >
+                        <ChevronDown size={12} className="rotate-90" />
+                        Back
+                      </button>
+                      {bulletPointTypes.map((bulletType) => (
                         <button
-                          onClick={addExperience}
-                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center gap-2"
+                          key={bulletType}
+                          onClick={() => addSection('bullet-points', bulletType)}
+                          disabled={sections.length >= MAX_SECTIONS}
+                          className={`w-full px-4 py-3 text-left text-sm transition-colors ${
+                            sections.length >= MAX_SECTIONS
+                              ? 'opacity-50 cursor-not-allowed text-gray-500'
+                              : 'text-gray-300 hover:bg-gray-700'
+                          }`}
                         >
-                          <Plus size={14} />
-                          Add Experience
+                          {BULLET_POINT_TYPE_LABELS[bulletType]}
                         </button>
-                      </div>
-                    </>
+                      ))}
+                    </div>
                   )}
                 </div>
-                <div className="space-y-4">
-                  {(content.experience || []).map((exp, index) => (
-                    <div key={index} className="bg-gray-800 rounded-lg border border-gray-700 p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-400 mb-1">Company</label>
-                          <input
-                            type="text"
-                            value={exp.company || ''}
-                            onChange={(e) => updateExperience(index, 'company', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-700 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            placeholder="Company Name"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-400 mb-1">Role</label>
-                          <input
-                            type="text"
-                            value={exp.role || ''}
-                            onChange={(e) => updateExperience(index, 'role', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-700 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            placeholder="Job Title"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-400 mb-1">Duration</label>
-                          <input
-                            type="text"
-                            value={exp.duration || ''}
-                            onChange={(e) => updateExperience(index, 'duration', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-700 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            placeholder="Jan 2020 - Present"
-                          />
-                        </div>
+
+                <SortableContext
+                  items={sectionOrder}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {orderedSections.map((section) => (
+                    <SortableSection
+                      key={section.id}
+                      id={section.id}
+                    >
+                      <div className="relative group">
+                        <button
+                          onClick={() => removeSection(section.id)}
+                          className="absolute -top-2 -left-2 z-10 p-1.5 bg-red-600 hover:bg-red-700 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Remove section"
+                        >
+                          <X size={12} />
+                        </button>
+                        <GenericSectionForm
+                          section={section}
+                          onUpdate={updateSection}
+                          isEditingName={editingSectionId === section.id}
+                          onStartEditName={() => handleSectionNameEdit(section.id)}
+                          onSaveName={(name) => handleSectionNameSave(section.id, name)}
+                          onCancelEditName={handleSectionNameCancel}
+                          editingSectionName={editingSectionName}
+                          onEditingSectionNameChange={setEditingSectionName}
+                        />
                       </div>
-                      <div className="mb-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="block text-xs font-medium text-gray-400">Bullet Points</label>
-                          <button
-                            onClick={() => addBulletPoint(index)}
-                            className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs flex items-center gap-1"
-                          >
-                            <Plus size={12} />
-                            Add Point
-                          </button>
-                        </div>
-                        <div className="space-y-2">
-                          {(exp.bullet_points || []).map((bullet, bulletIndex) => (
-                            <div key={bulletIndex} className="flex items-start gap-2">
-                              <span className="text-gray-400 mt-2">•</span>
-                              <input
-                                type="text"
-                                value={bullet}
-                                onChange={(e) => updateBulletPoint(index, bulletIndex, e.target.value)}
-                                className="flex-1 px-3 py-2 border border-gray-600 rounded bg-gray-700 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                placeholder="Achievement or responsibility..."
-                              />
-                              <button
-                                onClick={() => removeBulletPoint(index, bulletIndex)}
-                                className="p-2 text-red-400 hover:text-red-300"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => removeExperience(index)}
-                        className="w-full px-3 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded-lg text-sm flex items-center justify-center gap-2"
-                      >
-                        <Trash2 size={14} />
-                        Remove Experience
-                      </button>
-                    </div>
+                    </SortableSection>
                   ))}
-                  {(!content.experience || content.experience.length === 0) && (
-                    <p className="text-gray-500 text-sm text-center py-4">No experience entries. Click "Add Experience" to add one.</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Skills Section */}
-              <div className="bg-gray-900 rounded-lg border border-gray-700 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  {editingSection === 'skills' ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <input
-                        type="text"
-                        value={editingSectionName}
-                        onChange={(e) => setEditingSectionName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            setSectionNames(prev => ({ ...prev, skills: editingSectionName }));
-                            setEditingSection(null);
-                            setEditingSectionName('');
-                          } else if (e.key === 'Escape') {
-                            setEditingSection(null);
-                            setEditingSectionName('');
-                          }
-                        }}
-                        className="flex-1 px-3 py-1 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm font-semibold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => {
-                          setSectionNames(prev => ({ ...prev, skills: editingSectionName }));
-                          setEditingSection(null);
-                          setEditingSectionName('');
-                        }}
-                        className="p-1 text-green-400 hover:text-green-300"
-                      >
-                        <Save size={14} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingSection(null);
-                          setEditingSectionName('');
-                        }}
-                        className="p-1 text-gray-400 hover:text-gray-300"
-                      >
-                        <X size={14} />
-                      </button>
+                  {orderedSections.length === 0 && (
+                    <div className="text-center text-gray-500 py-8">
+                      <p className="text-sm">No sections added yet.</p>
+                      <p className="text-xs mt-2">Click "Add Section" to get started.</p>
                     </div>
-                  ) : (
-                    <>
-                      <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider">
-                        {sectionNames.skills}
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            setEditingSection('skills');
-                            setEditingSectionName(sectionNames.skills);
-                          }}
-                          className="p-1 text-gray-400 hover:text-gray-300"
-                          title="Rename section"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={addSkill}
-                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center gap-2"
-                        >
-                          <Plus size={14} />
-                          Add Skill
-                        </button>
-                      </div>
-                    </>
                   )}
-                </div>
-                <div className="space-y-2">
-                  {(content.skills || []).map((skill, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={skill}
-                        onChange={(e) => updateSkill(index, e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        placeholder="Skill name"
-                      />
-                      <button
-                        onClick={() => removeSkill(index)}
-                        className="p-2 text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                  {(!content.skills || content.skills.length === 0) && (
-                    <p className="text-gray-500 text-sm text-center py-4">No skills added. Click "Add Skill" to add one.</p>
-                  )}
-                </div>
+                </SortableContext>
               </div>
-
-              {/* Education Section */}
-              <div className="bg-gray-900 rounded-lg border border-gray-700 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  {editingSection === 'education' ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <input
-                        type="text"
-                        value={editingSectionName}
-                        onChange={(e) => setEditingSectionName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            setSectionNames(prev => ({ ...prev, education: editingSectionName }));
-                            setEditingSection(null);
-                            setEditingSectionName('');
-                          } else if (e.key === 'Escape') {
-                            setEditingSection(null);
-                            setEditingSectionName('');
-                          }
-                        }}
-                        className="flex-1 px-3 py-1 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm font-semibold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => {
-                          setSectionNames(prev => ({ ...prev, education: editingSectionName }));
-                          setEditingSection(null);
-                          setEditingSectionName('');
-                        }}
-                        className="p-1 text-green-400 hover:text-green-300"
-                      >
-                        <Save size={14} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingSection(null);
-                          setEditingSectionName('');
-                        }}
-                        className="p-1 text-gray-400 hover:text-gray-300"
-                      >
-                        <X size={14} />
-                      </button>
+              <DragOverlay>
+                {activeId ? (
+                  <div className="bg-gray-900 rounded-lg border border-gray-700 p-4 opacity-90">
+                    <div className="text-sm font-semibold text-purple-400 uppercase tracking-wider">
+                      {sections.find(s => s.id === activeId)?.name || activeId}
                     </div>
-                  ) : (
-                    <>
-                      <label className="block text-sm font-semibold text-purple-400 uppercase tracking-wider">
-                        {sectionNames.education}
-                      </label>
-                      <button
-                        onClick={() => {
-                          setEditingSection('education');
-                          setEditingSectionName(sectionNames.education);
-                        }}
-                        className="p-1 text-gray-400 hover:text-gray-300"
-                        title="Rename section"
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                    </>
-                  )}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Degree</label>
-                    <input
-                      type="text"
-                      value={content.education?.degree || ''}
-                      onChange={(e) => setContent(prev => ({
-                        ...prev,
-                        education: { 
-                          degree: e.target.value,
-                          university: prev.education?.university || '',
-                          year: prev.education?.year || ''
-                        }
-                      }))}
-                      className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      placeholder="Bachelor of Science"
-                    />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">University</label>
-                    <input
-                      type="text"
-                      value={content.education?.university || ''}
-                      onChange={(e) => setContent(prev => ({
-                        ...prev,
-                        education: { 
-                          degree: prev.education?.degree || '',
-                          university: e.target.value,
-                          year: prev.education?.year || ''
-                        }
-                      }))}
-                      className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      placeholder="University Name"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
-                    <input
-                      type="text"
-                      value={content.education?.year || ''}
-                      onChange={(e) => setContent(prev => ({
-                        ...prev,
-                        education: { 
-                          degree: prev.education?.degree || '',
-                          university: prev.education?.university || '',
-                          year: e.target.value
-                        }
-                      }))}
-                      className="w-full px-3 py-2 border border-gray-600 rounded bg-gray-800 text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      placeholder="2020"
-                    />
-                  </div>
-                </div>
-              </div>
-
-            </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           )}
         </div>
         

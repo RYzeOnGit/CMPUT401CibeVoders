@@ -59,14 +59,45 @@ export interface Resume {
   derived_resumes?: Resume[];
 }
 
+export type SectionType = 'text' | 'bullet-points' | 'list' | 'education';
+
+export type BulletPointType = 'work-experience' | 'projects' | 'generic';
+
+export interface GenericSection {
+  id: string; // Unique identifier for the section
+  type: SectionType;
+  name: string; // User-defined name (e.g., "Work Experience", "Projects", "Summary")
+  data: SectionData;
+  bulletPointType?: BulletPointType; // Only used when type is 'bullet-points'
+}
+
+export type SectionData = 
+  | { type: 'text'; content: string }
+  | { type: 'bullet-points'; items: BulletPointItem[] }
+  | { type: 'list'; items: string[] }
+  | { type: 'education'; degree: string; university: string; year: string };
+
+export interface BulletPointItem {
+  company?: string;
+  role?: string;
+  duration?: string;
+  bullet_points: string[];
+}
+
 export interface ResumeContent {
   name?: string;
   email?: string;
   phone?: string;
+  // Legacy fields for backward compatibility
   summary?: string;
   experience?: Experience[];
   skills?: string[];
   education?: Education;
+  // New generic sections system
+  sections?: GenericSection[];
+  // Section preferences
+  activeSections?: string[]; // Array of section IDs that should be displayed
+  sectionOrder?: string[]; // Order in which sections should be displayed (by ID)
 }
 
 export interface Experience {
