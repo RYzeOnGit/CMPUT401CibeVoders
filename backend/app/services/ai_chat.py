@@ -55,6 +55,13 @@ async def extract_resume_text_from_tex(resume: Resume) -> str:
         
         return tex_content
         
+    except UnicodeDecodeError:
+        # Try with different encoding if UTF-8 fails
+        try:
+            tex_content = resume.file_data.decode('latin-1')
+            return tex_content
+        except Exception as e:
+            return f"Error decoding .tex file: {str(e)}"
     except Exception as e:
         # Final fallback to structured content
         if resume.content:

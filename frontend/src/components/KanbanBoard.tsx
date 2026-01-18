@@ -21,11 +21,10 @@ import type { Application, ApplicationStatus } from '../types';
 import { getStatusColor } from '../utils/statusColors';
 import { formatDate } from '../utils/dateUtils';
 import { useApplicationStore } from '../store/applicationStore';
-import { Trash2, Search, X, MessageSquare } from 'lucide-react';
+import { Trash2, Search, X } from 'lucide-react';
 
 interface KanbanBoardProps {
   applications: Application[];
-  onOpenCommunications?: (application: Application) => void;
 }
 
 interface SortableApplicationCardProps {
@@ -54,12 +53,7 @@ function DroppableColumn({
   );
 }
 
-interface SortableApplicationCardProps {
-  application: Application;
-  onOpenCommunications?: (application: Application) => void;
-}
-
-function SortableApplicationCard({ application, onOpenCommunications }: SortableApplicationCardProps) {
+function SortableApplicationCard({ application }: SortableApplicationCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: application.id.toString() });
   const deleteApplication = useApplicationStore((state) => state.deleteApplication);
@@ -126,28 +120,6 @@ function SortableApplicationCard({ application, onOpenCommunications }: Sortable
         </div>
       </div>
       <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-gray-600/30">
-        {onOpenCommunications && (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onOpenCommunications(application);
-            }}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            className="opacity-0 group-hover:opacity-100 text-blue-400 hover:text-blue-300 transition-all p-1.5 rounded hover:bg-blue-900/30 z-10 pointer-events-auto"
-            title="View communications"
-            type="button"
-          >
-            <MessageSquare size={14} />
-          </button>
-        )}
         <button
           onClick={handleDeleteClick}
           onMouseDown={(e) => {
@@ -174,7 +146,7 @@ function SortableApplicationCard({ application, onOpenCommunications }: Sortable
   );
 }
 
-function KanbanBoard({ applications, onOpenCommunications }: KanbanBoardProps) {
+function KanbanBoard({ applications }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const updateApplication = useApplicationStore((state) => state.updateApplication);
@@ -299,7 +271,6 @@ function KanbanBoard({ applications, onOpenCommunications }: KanbanBoardProps) {
                       <SortableApplicationCard 
                         key={application.id} 
                         application={application}
-                        onOpenCommunications={onOpenCommunications}
                       />
                     ))}
                   {columnApps.length === 0 && (
