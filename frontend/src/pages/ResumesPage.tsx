@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, ArrowLeft, Plus, Upload, X, Trash2, Copy, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize, Edit, Crown } from 'lucide-react';
+import { FileText, ArrowLeft, Plus, Upload, X, Trash2, Copy, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize, Sparkles } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { resumesApi } from '../api/client';
 import type { Resume } from '../types';
@@ -20,13 +21,55 @@ export default function ResumesPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingResumeId, setEditingResumeId] = useState<number | null>(null);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [selectedResumeForTemplate, setSelectedResumeForTemplate] = useState<Resume | null>(null);
+  const [templates, setTemplates] = useState<Record<string, string>>({});
+  const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
+  const [previewTemplate, setPreviewTemplate] = useState<{ id: string; name: string } | null>(null);
+  const [templatePreviews, setTemplatePreviews] = useState<Record<string, string>>({});
+
   useEffect(() => {
     fetchResumes();
+    fetchTemplates();
   }, []);
+
+  const fetchTemplates = async () => {
+    try {
+      const data = await resumesApi.getTemplates();
+      setTemplates(data);
+      // Load template previews
+      loadTemplatePreviews(data);
+    } catch (error) {
+      console.error('Failed to fetch templates:', error);
+    }
+  };
+
+  const loadTemplatePreviews = (templatesData: Record<string, string>) => {
+    // Load template descriptions for preview
+    const previews: Record<string, string> = {};
+    for (const [templateId] of Object.entries(templatesData)) {
+      previews[templateId] = getTemplateDescription(templateId);
+    }
+    setTemplatePreviews(previews);
+  };
+
+  const getTemplateDescription = (templateId: string): string => {
+    const descriptions: Record<string, string> = {
+      'template-1': 'Modern Deedy style with clean typography, centered header, and organized sections. Uses custom commands for easy formatting.',
+      'template-2': 'AltaCV style with sidebar layout, professional two-column design, and elegant color scheme. Great for academic/research profiles.',
+      'template-3': 'Jake\'s Resume classic style with traditional layout, clear section headers, and ATS-friendly formatting. Simple and professional.'
+    };
+    return descriptions[templateId] || 'Professional resume template with modern styling.';
+  };
 
   const fetchResumes = async () => {
     try {
       const data = await resumesApi.getAll();
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:63',message:'fetchResumes result',data:{resumesCount:data.length,resumeIds:data.map(r=>r.id),resumeFileTypes:data.map(r=>({id:r.id,name:r.name,fileType:r.file_type}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      
       setResumes(data);
       if (data.length > 0 && !selectedResume) {
         setSelectedResume(data.find(r => r.is_master) || data[0]);
@@ -101,6 +144,60 @@ export default function ResumesPage() {
       const errorMessage = error.response?.data?.detail || error.message || 'Failed to unset master resume';
       alert(`Failed to unset master resume: ${errorMessage}`);
     }
+  const handleApplyTemplate = async (templateId: string) => {
+    if (!selectedResumeForTemplate) return;
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:106',message:'handleApplyTemplate entry',data:{templateId,originalResumeId:selectedResumeForTemplate.id,originalResumeName:selectedResumeForTemplate.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
+    setIsApplyingTemplate(true);
+    try {
+      const newResume = await resumesApi.applyTemplate(selectedResumeForTemplate.id, templateId);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:111',message:'API response received',data:{newResumeId:newResume.id,newResumeName:newResume.name,hasFileType:!!newResume.file_type,fileType:newResume.file_type,hasLatex:!!newResume.latex_content},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
+      await fetchResumes();
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:115',message:'After fetchResumes',data:{resumesCount:resumes.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      
+      setShowTemplateModal(false);
+      setSelectedResumeForTemplate(null);
+      
+      // Use the newResume directly from API response instead of fetching again
+      // The API response already contains the complete resume object with file_type
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:120',message:'Using newResume from API response',data:{newResumeId:newResume.id,newResumeName:newResume.name,newResumeFileType:newResume.file_type,newResumeHasPdf:newResume.file_type?.includes('pdf')},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
+      // Select the new resume directly from API response
+      setSelectedResume(newResume);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:125',message:'setSelectedResume called with newResume',data:{resumeId:newResume.id,resumeFileType:newResume.file_type},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      alert(`Template applied successfully! New resume: ${newResume.name}`);
+    } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:127',message:'Template apply error',data:{error:error.message,errorDetail:error.response?.data?.detail},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+      alert(error.response?.data?.detail || 'Failed to apply template');
+    } finally {
+      setIsApplyingTemplate(false);
+    }
+  };
+
+  const openTemplateModal = (resume: Resume) => {
+    if (!resume.latex_content) {
+      alert('This resume does not have LaTeX content. Please upload a PDF first.');
+      return;
+    }
+    setSelectedResumeForTemplate(resume);
+    setShowTemplateModal(true);
   };
 
   return (
@@ -203,6 +300,7 @@ export default function ResumesPage() {
                 onCreateDerived={() => handleCreateDerived(selectedResume)}
                 onSetMaster={() => handleSetMaster(selectedResume.id)}
                 onUnsetMaster={() => handleUnsetMaster(selectedResume.id)}
+                onApplyTemplate={() => openTemplateModal(selectedResume)}
               />
             ) : (
               <div className="text-center py-20">
@@ -225,6 +323,25 @@ export default function ResumesPage() {
             setEditingResumeId(null);
           }}
           onSuccess={fetchResumes}
+      {showTemplateModal && selectedResumeForTemplate && (
+        <TemplateModal
+          resume={selectedResumeForTemplate}
+          templates={templates}
+          templatePreviews={templatePreviews}
+          onClose={() => {
+            setShowTemplateModal(false);
+            setSelectedResumeForTemplate(null);
+          }}
+          onApply={handleApplyTemplate}
+          onPreview={(templateId, templateName) => setPreviewTemplate({ id: templateId, name: templateName })}
+          isApplying={isApplyingTemplate}
+        />
+      )}
+      {previewTemplate && (
+        <TemplatePreviewModal
+          templateId={previewTemplate.id}
+          templateName={previewTemplate.name}
+          onClose={() => setPreviewTemplate(null)}
         />
       )}
     </div>
@@ -233,6 +350,7 @@ export default function ResumesPage() {
 
 // PDF Viewer Component
 function PDFViewer({ resume, onDelete, onCreateDerived, onSetMaster, onUnsetMaster }: { resume: Resume; onDelete: () => void; onCreateDerived: () => void; onSetMaster: () => void; onUnsetMaster: () => void }) {
+function PDFViewer({ resume, onDelete, onCreateDerived, onApplyTemplate }: { resume: Resume; onDelete: () => void; onCreateDerived: () => void; onApplyTemplate: () => void }) {
   const hasPdf = resume.file_type?.includes('pdf');
   const [numPages, setNumPages] = useState(0);
   const [pageNumber, setPageNumber] = useState(1);
@@ -241,20 +359,41 @@ function PDFViewer({ resume, onDelete, onCreateDerived, onSetMaster, onUnsetMast
   const [showLatex, setShowLatex] = useState(false);
 
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:304',message:'PDFViewer useEffect triggered',data:{resumeId:resume.id,resumeName:resume.name,hasPdf,fileType:resume.file_type},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    
     if (!hasPdf || !resume.id) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:309',message:'PDFViewer early return',data:{hasPdf,hasResumeId:!!resume.id,reason:!hasPdf?'noPdf':'noId'},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       setPdfUrl(null);
       return;
     }
 
     // Fetch PDF as blob
     const loadPdf = async () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:318',message:'loadPdf start',data:{resumeId:resume.id,fileUrl:resumesApi.getFileUrl(resume.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       try {
         const response = await fetch(resumesApi.getFileUrl(resume.id));
-        if (!response.ok) throw new Error('Failed to fetch PDF');
+        if (!response.ok) {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:323',message:'PDF fetch failed',data:{status:response.status,statusText:response.statusText},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
+          throw new Error('Failed to fetch PDF');
+        }
         const blob = await response.blob();
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:328',message:'PDF blob received',data:{blobSize:blob.size,blobType:blob.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         const url = URL.createObjectURL(blob);
         setPdfUrl(url);
       } catch (error) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/39fec82c-85d4-410b-8895-0feee477743a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ResumesPage.tsx:332',message:'PDF load error',data:{error:error instanceof Error?error.message:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         console.error('Error loading PDF:', error);
         setPdfUrl(null);
       }
@@ -265,9 +404,70 @@ function PDFViewer({ resume, onDelete, onCreateDerived, onSetMaster, onUnsetMast
     return () => {
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
     };
-  }, [resume.id, hasPdf]);
+  }, [resume.id, resume.file_type]); // Changed: depend on resume.file_type directly instead of hasPdf
 
   if (!hasPdf) {
+    // If there's LaTeX content but no PDF, show the LaTeX
+    if (resume.latex_content) {
+      return (
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-semibold text-gray-100">{resume.name}</h3>
+            <div className="flex gap-2">
+              <button 
+                onClick={onApplyTemplate}
+                className="px-3 py-1.5 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white rounded-lg text-sm flex items-center gap-2"
+                title="Apply template for visual upgrade"
+              >
+                <Sparkles size={14} />
+                Glow Up
+              </button>
+              <button onClick={onDelete} className="px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded-lg text-sm flex items-center gap-2">
+                <Trash2 size={14} />
+                Delete
+              </button>
+            </div>
+          </div>
+
+          {/* Notice about PDF */}
+          <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
+            <p className="text-yellow-300 text-sm">
+              <strong>Note:</strong> This resume has LaTeX content but no compiled PDF. 
+              The PDF compilation may have failed. You can download the LaTeX file and compile it locally.
+            </p>
+          </div>
+
+          {/* LaTeX Viewer */}
+          <div className="bg-gray-900 rounded-lg overflow-hidden border border-gray-700">
+            <div className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
+              <span className="text-sm text-gray-300">LaTeX Source (Template Applied)</span>
+              <button
+                onClick={() => {
+                  const blob = new Blob([resume.latex_content!], { type: 'text/plain' });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `${resume.name}.tex`;
+                  link.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded"
+                title="Download LaTeX"
+              >
+                <Download size={18} />
+              </button>
+            </div>
+            <div className="bg-gray-900 p-4 overflow-auto" style={{ maxHeight: 'calc(100vh - 350px)' }}>
+              <pre className="text-gray-200 text-sm font-mono whitespace-pre-wrap break-words">
+                <code>{resume.latex_content}</code>
+              </pre>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
     return (
       <div className="text-center py-20">
         <Upload className="mx-auto mb-4 text-gray-500" size={64} />
@@ -283,6 +483,27 @@ function PDFViewer({ resume, onDelete, onCreateDerived, onSetMaster, onUnsetMast
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h3 className="text-xl font-semibold text-gray-100">{resume.name}</h3>
+        <h3 className="text-xl font-semibold text-gray-100">{resume.name}</h3>
+        <div className="flex gap-2">
+          {resume.latex_content && (
+            <>
+              <button 
+                onClick={() => setShowLatex(!showLatex)}
+                className="px-3 py-1.5 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-sm flex items-center gap-2"
+              >
+                <FileText size={14} />
+                {showLatex ? 'Show PDF' : 'Show LaTeX'}
+              </button>
+              <button 
+                onClick={onApplyTemplate}
+                className="px-3 py-1.5 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white rounded-lg text-sm flex items-center gap-2"
+                title="Apply template for visual upgrade"
+              >
+                <Sparkles size={14} />
+                Glow Up
+              </button>
+            </>
+          )}
           {resume.is_master && (
             <span className="inline-flex items-center gap-1 text-xs font-semibold bg-purple-900/30 text-purple-300 px-2 py-1 rounded">
               <Crown size={14} />
@@ -594,6 +815,267 @@ function CreateModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// Template Selection Modal
+function TemplateModal({ 
+  resume, 
+  templates,
+  templatePreviews,
+  onClose, 
+  onApply,
+  onPreview,
+  isApplying 
+}: { 
+  resume: Resume; 
+  templates: Record<string, string>;
+  templatePreviews: Record<string, string>;
+  onClose: () => void; 
+  onApply: (templateId: string) => void;
+  onPreview: (templateId: string, templateName: string) => void;
+  isApplying: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full p-6 border border-gray-700">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-100">Apply Template</h3>
+            <p className="text-sm text-gray-400 mt-1">Choose a template to upgrade "{resume.name}"</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200" disabled={isApplying}>
+            <X size={20} />
+          </button>
+        </div>
+        
+        <div className="space-y-3 mb-6">
+          <p className="text-sm text-gray-300">
+            AI will intelligently blend your resume content with the selected template, preserving all details while upgrading the visual format.
+          </p>
+          <p className="text-xs text-gray-400 italic">
+            👆 Click on any template card below to apply it
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
+          {Object.keys(templates).length === 0 ? (
+            <div className="p-4 text-center text-gray-400">
+              <p>Loading templates...</p>
+            </div>
+          ) : (
+            Object.entries(templates).map(([templateId, templateName]) => (
+              <div
+                key={templateId}
+                className="p-4 bg-gray-700/50 hover:bg-gray-700 border border-gray-600 rounded-lg transition-all"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="text-gray-100 font-medium mb-1">{templateName}</div>
+                    <div className="text-xs text-gray-400 mb-2">{templateId}</div>
+                    <div className="text-xs text-gray-500 italic">
+                      {templatePreviews[templateId] || 'Professional resume template'}
+                    </div>
+                  </div>
+                  <Sparkles size={20} className="text-purple-400 ml-3 flex-shrink-0" />
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => onPreview(templateId, templateName)}
+                    disabled={isApplying}
+                    className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-gray-200 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-1"
+                  >
+                    Preview
+                  </button>
+                  <button
+                    onClick={() => onApply(templateId)}
+                    disabled={isApplying}
+                    className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-1"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {isApplying && (
+          <div className="mt-4 p-4 bg-purple-900/20 border border-purple-700/50 rounded-lg">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600"></div>
+              <span className="text-sm text-gray-300">Applying template... This may take a minute.</span>
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-3 pt-4 mt-4 border-t border-gray-700">
+          <button 
+            onClick={onClose} 
+            className="px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 flex-1" 
+            disabled={isApplying}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Template Preview Modal
+function TemplatePreviewModal({
+  templateId,
+  templateName,
+  onClose
+}: {
+  templateId: string;
+  templateName: string;
+  onClose: () => void;
+}) {
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [numPages, setNumPages] = useState(0);
+  const [pageNumber, setPageNumber] = useState(1);
+
+  useEffect(() => {
+    // Load PDF preview
+    const loadPreview = async () => {
+      setIsLoading(true);
+      setError(null);
+      setPdfUrl(null);
+      try {
+        const previewUrl = resumesApi.getTemplatePreviewUrl(templateId);
+        console.log('Loading preview from:', previewUrl);
+        const response = await fetch(previewUrl);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Preview fetch failed:', response.status, errorText);
+          throw new Error(errorText || `Failed to load preview (${response.status})`);
+        }
+        
+        const blob = await response.blob();
+        console.log('Preview blob loaded, size:', blob.size);
+        if (blob.size === 0) {
+          throw new Error('Preview file is empty');
+        }
+        const url = URL.createObjectURL(blob);
+        setPdfUrl(url);
+      } catch (err: any) {
+        console.error('Failed to load template preview:', err);
+        setError(err.message || 'Preview not available');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadPreview();
+    
+    return () => {
+      if (pdfUrl) {
+        URL.revokeObjectURL(pdfUrl);
+      }
+    };
+  }, [templateId]);
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-2xl shadow-2xl max-w-5xl w-full p-6 border border-gray-700 max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-100">Template Preview</h3>
+            <p className="text-sm text-gray-400 mt-1">{templateName} ({templateId})</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto bg-gray-900 rounded-lg p-4">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mb-4"></div>
+              <p className="text-gray-400">Generating preview...</p>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <p className="text-red-400 mb-2">Preview Unavailable</p>
+              <p className="text-gray-400 text-sm text-center max-w-md">{error}</p>
+              <p className="text-gray-500 text-xs mt-4 text-center">
+                The template will still work when applied - this is just a preview limitation.
+              </p>
+            </div>
+          ) : pdfUrl ? (
+            <div className="space-y-4">
+              {/* PDF Controls */}
+              {numPages > 1 && (
+                <div className="flex items-center justify-center gap-4 bg-gray-800 p-2 rounded">
+                  <button
+                    onClick={() => setPageNumber(p => Math.max(1, p - 1))}
+                    disabled={pageNumber <= 1}
+                    className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded disabled:opacity-30"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <span className="text-sm text-gray-300">
+                    Page {pageNumber} of {numPages}
+                  </span>
+                  <button
+                    onClick={() => setPageNumber(p => Math.min(numPages, p + 1))}
+                    disabled={pageNumber >= numPages}
+                    className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded disabled:opacity-30"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
+              )}
+              
+              {/* PDF Viewer */}
+              <div className="flex justify-center">
+                <Document
+                  file={pdfUrl}
+                  onLoadSuccess={({ numPages }) => {
+                    setNumPages(numPages);
+                    setPageNumber(1);
+                  }}
+                  onLoadError={(error) => {
+                    console.error('PDF load error:', error);
+                    setError('Failed to load PDF preview');
+                  }}
+                  loading={<div className="p-16"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div></div>}
+                  error={<div className="text-red-400 p-8 text-center">Failed to load PDF</div>}
+                >
+                  <Page 
+                    pageNumber={pageNumber} 
+                    scale={1.2}
+                    renderTextLayer 
+                    renderAnnotationLayer 
+                    className="shadow-xl border border-gray-700"
+                  />
+                </Document>
+              </div>
+              
+              <div className="mt-4 p-4 bg-purple-900/20 border border-purple-700/50 rounded-lg">
+                <p className="text-xs text-gray-300">
+                  <strong>Note:</strong> This is a sample preview with placeholder data. When applied, AI will intelligently blend your actual resume content with this template format, preserving all your details while upgrading the visual appearance.
+                </p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex gap-3 pt-4 mt-4 border-t border-gray-700">
+          <button 
+            onClick={onClose} 
+            className="px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 flex-1"
+          >
+            Close Preview
+          </button>
+        </div>
       </div>
     </div>
   );
